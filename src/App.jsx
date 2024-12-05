@@ -8,6 +8,8 @@ import {
   Tooltip, 
   Legend 
 } from 'recharts';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const App = () => {
   const [inputText, setInputText] = useState('');
@@ -52,53 +54,95 @@ const App = () => {
       if (noteMatch) {
         data.note = parseFloat(noteMatch[1]);
         data.nombreEvaluations = parseInt(noteMatch[2]);
-        data.ventes = data.nombreEvaluations; // Utilisation du nombre total d'évaluations
+        // Calcul des ventes estimées avec marge d'erreur de 10%
+        data.ventesMin = Math.floor(data.nombreEvaluations * 0.9);
+        data.ventesMax = Math.ceil(data.nombreEvaluations * 1.1);
       }
 
-      // Extraction des commentaires
+      // Extraction des commentaires en évitant les commentaires du vendeur
       const comments = [];
       const lines = text.split('\n');
-      let i = 0;
-
-      while (i < lines.length) {
-        const line = lines[i].trim();
+      for (let i = 0; i < lines.length - 1; i++) {
+        const currentLine = lines[i].trim();
+        const nextLine = lines[i + 1].trim();
         
-        // On cherche les lignes qui correspondent au format "username il y a X temps"
-        const userTimePattern = /^([^\s]+)\s+il y a\s+([^\n]+)$/;
-        const userMatch = line.match(userTimePattern);
-
-        if (userMatch && userMatch[1] !== 'Vinted' && userMatch[1] !== 'kymordz') {
-          const comment = {
-            user: userMatch[1],
-            time: userMatch[2],
-            text: ''
-          };
-
-          // On regarde la ligne suivante pour le contenu du commentaire
-          if (i + 1 < lines.length) {
-            const nextLine = lines[i + 1].trim();
-            if (!nextLine.match(userTimePattern) && nextLine !== '') {
-              comment.text = nextLine;
-              i++; // On avance d'une ligne supplémentaire
-            }
-          }
-
-          comments.push(comment);
+        const commentPattern = /^([^\s]+)\s+il y a\s+([^\n]+)$/;
+        const currentMatch = currentLine.match(commentPattern);
+        
+        if (currentMatch && 
+            currentMatch[1] !== 'Vinted' && 
+            !lines[i-1]?.includes(data.boutique)) {
+          comments.push({
+            user: currentMatch[1],
+            time: currentMatch[2],
+            text: !nextLine.match(commentPattern) ? nextLine : ''
+          });
         }
-        i++;
       }
-
+      
       data.comments = comments;
-
-      if (!data.boutique) {
-        throw new Error('Impossible de trouver le nom de la boutique');
-      }
 
       return data;
     } catch (err) {
       console.error('Erreur de parsing:', err);
       throw new Error('Erreur lors de l\'analyse du profil. Assurez-vous d\'avoir copié tout le contenu de la page du profil Vinted.');
     }
+  };
+
+  const handleReset = () => {
+    setInputText('');
+    setProfileData(null);
+    setError('');
+  };
+
+  const generatePDF = () => {
+    if (!profileData) return;
+
+    const doc = new jsPDF();
+    
+    // Titre
+    doc.setFontSize(20);
+    doc.text('Rapport d\'analyse Vintalyze', 20, 20);
+    
+    // Informations générales
+    doc.setFontSize(16);
+    doc.text('Informations générales', 20, 40);
+    
+    const info = [
+      ['Boutique', profileData.boutique],
+      ['Ventes estimées', `${profileData.ventesMin} - ${profileData.ventesMax} (±10%)`],
+      ['Abonnés', profileData.abonnes?.toString() || 'N/A'],
+      ['Abonnements', profileData.abonnements?.toString() || 'N/A'],
+      ['Lieu', profileData.lieu || 'N/A'],
+      ['Note', `${profileData.note}/5 (${profileData.nombreEvaluations} évaluations)`]
+    ];
+    
+    doc.autoTable({
+      startY: 45,
+      head: [['Métrique', 'Valeur']],
+      body: info
+    });
+    
+    // Commentaires
+    if (profileData.comments && profileData.comments.length > 0) {
+      doc.setFontSize(16);
+      doc.text('Derniers commentaires', 20, doc.lastAutoTable.finalY + 20);
+      
+      const comments = profileData.comments.map(c => [
+        c.user,
+        c.time,
+        c.text
+      ]);
+      
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 25,
+        head: [['Utilisateur', 'Date', 'Commentaire']],
+        body: comments
+      });
+    }
+    
+    // Sauvegarde du PDF
+    doc.save(`vintalyze-${profileData.boutique}.pdf`);
   };
 
   const handleAnalyze = () => {
@@ -170,11 +214,16 @@ const App = () => {
                 <h3 className="font-bold mb-2">Informations générales</h3>
                 <ul className="space-y-2">
                   <li><span className="font-medium">Boutique:</span> {profileData.boutique}</li>
-                  {profileData.nombreEvaluations && <li><span className="font-medium">Évaluations:</span> {profileData.nombreEvaluations}</li>}
+                  <li><span className="font-medium">Ventes estimées:</span> {profileData.ventesMin} - {profileData.ventesMax} (±10%)</li>
                   {profileData.abonnes && <li><span className="font-medium">Abonnés:</span> {profileData.abonnes}</li>}
                   {profileData.abonnements && <li><span className="font-medium">Abonnements:</span> {profileData.abonnements}</li>}
                   {profileData.lieu && <li><span className="font-medium">Lieu:</span> {profileData.lieu}</li>}
-                  {profileData.note && <li><span className="font-medium">Note:</span> {profileData.note}/5</li>}
+                  {profileData.note && (
+                    <li>
+                      <span className="font-medium">Note:</span> {profileData.note}/5 
+                      {profileData.nombreEvaluations && ` (${profileData.nombreEvaluations} évaluations)`}
+                    </li>
+                  )}
                 </ul>
               </div>
 
@@ -208,7 +257,7 @@ const App = () => {
                     height={300}
                     data={[{
                       name: 'Engagement',
-                      Évaluations: profileData.nombreEvaluations || 0,
+                      'Ventes estimées': Math.floor((profileData.ventesMin + profileData.ventesMax) / 2),
                       Abonnés: profileData.abonnes || 0,
                       Abonnements: profileData.abonnements || 0
                     }]}
@@ -219,12 +268,27 @@ const App = () => {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="Évaluations" fill="#3B82F6" />
+                    <Bar dataKey="Ventes estimées" fill="#3B82F6" />
                     <Bar dataKey="Abonnés" fill="#10B981" />
                     <Bar dataKey="Abonnements" fill="#6366F1" />
                   </BarChart>
                 </div>
               </div>
+            </div>
+
+            <div className="flex gap-4 mt-8">
+              <button
+                className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+                onClick={handleReset}
+              >
+                Nouvelle analyse
+              </button>
+              <button
+                className="flex-1 bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors"
+                onClick={generatePDF}
+              >
+                Exporter en PDF
+              </button>
             </div>
           </div>
         )}
