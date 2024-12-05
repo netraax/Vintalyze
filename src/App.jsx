@@ -18,60 +18,52 @@ import {
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-// Remplacer la fonction de détection de langue
-  const detectLanguage = (text) => {
-    try {
-      // Utilisation de linguist.js
-      const result = window.linguist.detect(text);
-      
-      // Mapping des codes de langue vers nos pays
-      const languageToCountry = {
-        'fr': 'France',
-        'es': 'Espagne',
-        'it': 'Italie',
-        'en': 'International',
-        'nl': 'Pays-Bas',
-        'de': 'Allemagne'
-      };
+// Nouvelle fonction de détection de langue avec linguist.js
+const detectLanguage = (text) => {
+  try {
+    const result = window.linguist.detect(text);
+    
+    const languageToCountry = {
+      'fr': 'France',
+      'es': 'Espagne',
+      'it': 'Italie',
+      'en': 'International',
+      'nl': 'Pays-Bas',
+      'de': 'Allemagne'
+    };
 
-      // Retourner le pays correspondant à la langue détectée
-      const detectedLanguage = result.language; // linguist retourne le code de la langue (fr, es, etc.)
-      return languageToCountry[detectedLanguage] || 'International';
-    } catch (error) {
-      console.error('Erreur de détection de langue:', error);
-      return 'International'; // Par défaut si erreur
-    }
-  };
-
-  // Dans la fonction parseVintedProfile, remplacer la partie qui gère les commentaires :
-  
-  // Analyse des commentaires pour la répartition géographique
-  const salesByCountry = {
-    'France': 0,
-    'Espagne': 0,
-    'Italie': 0,
-    'International': 0,
-    'Pays-Bas': 0,
-    'Allemagne': 0
-  };
-
-  let totalAnalyzedComments = 0;
-  
-  const lines = text.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    const nextLine = lines[i + 1]?.trim() || '';
-
-    if (line.includes('il y a') && !line.includes('Vinted')) {
-      const timeMatch = line.match(/il y a ([^*\n]+)/i);
-      if (timeMatch && nextLine && !nextLine.startsWith('**')) {
-        // Détecter la langue du commentaire
-        const country = detectLanguage(nextLine);
-        salesByCountry[country]++;
-        totalAnalyzedComments++;
-      }
-    }
+    const detectedLanguage = result.language;
+    return languageToCountry[detectedLanguage] || 'International';
+  } catch (error) {
+    console.error('Erreur de détection de langue:', error);
+    return 'International';
   }
+};
+
+// Fonction utilitaire pour obtenir l'intervalle de dates
+const getDateRange = (dates) => {
+  if (dates.length === 0) return { start: new Date(), end: new Date() };
+  const sortedDates = dates.sort((a, b) => new Date(a) - new Date(b));
+  return {
+    start: new Date(sortedDates[0]),
+    end: new Date(sortedDates[sortedDates.length - 1])
+  };
+};
+
+// Fonction pour générer la période adaptative
+const generateDatePeriod = (startDate, endDate) => {
+  const dates = {};
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+
+  while (current <= end) {
+    const monthKey = current.toISOString().slice(0, 7);
+    dates[monthKey] = 0;
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return dates;
+};
 const App = () => {
   const [inputText, setInputText] = useState('');
   const [profileData, setProfileData] = useState(null);
@@ -156,7 +148,6 @@ const App = () => {
       prediction: prediction
     };
   };
-
   const convertRelativeDateToAbsolute = (relativeDate) => {
     const now = new Date();
     const parts = relativeDate.toLowerCase().match(/(\d+)\s+(minute|heure|jour|semaine|mois|an|années|ans)/);
@@ -193,6 +184,7 @@ const App = () => {
     
     return date;
   };
+
   const parseVintedProfile = (text) => {
     try {
       const data = {};
@@ -236,18 +228,12 @@ const App = () => {
         data.ventesMinEstimees = Math.floor(data.nombreEvaluations * 0.9);
       }
 
-      // Analyse temporelle des ventes
-      const salesByMonth = {};
-      const timePeriod = 12;
-      
-      for (let i = 0; i < timePeriod; i++) {
-        const date = new Date();
-        date.setMonth(date.getMonth() - i);
-        const monthKey = date.toISOString().slice(0, 7);
-        salesByMonth[monthKey] = 0;
-      }
-
+      // Analyse temporelle adaptative des ventes
+      const commentDates = [];
       const lines = text.split('\n');
+      const salesByMonth = {};
+      
+      // Collecte des dates
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (line.includes('il y a')) {
@@ -255,15 +241,27 @@ const App = () => {
           if (timeMatch && !line.includes('Vinted')) {
             const absoluteDate = convertRelativeDateToAbsolute(timeMatch[1]);
             if (absoluteDate) {
-              const monthKey = absoluteDate.toISOString().slice(0, 7);
-              if (salesByMonth.hasOwnProperty(monthKey)) {
-                salesByMonth[monthKey]++;
-              }
+              commentDates.push(absoluteDate);
             }
           }
         }
       }
 
+      // Définir la période basée sur les dates trouvées
+      if (commentDates.length > 0) {
+        const { start, end } = getDateRange(commentDates);
+        Object.assign(salesByMonth, generateDatePeriod(start, end));
+
+        // Compter les ventes par mois
+        commentDates.forEach(date => {
+          const monthKey = date.toISOString().slice(0, 7);
+          if (salesByMonth.hasOwnProperty(monthKey)) {
+            salesByMonth[monthKey]++;
+          }
+        });
+      }
+
+      // Convertir en format pour le graphique
       data.salesTimeline = Object.entries(salesByMonth)
         .map(([date, count]) => ({
           date: date,
@@ -272,13 +270,9 @@ const App = () => {
         }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-      // Calcul du taux d'engagement
+      // Analyses supplémentaires
       data.engagementRate = data.abonnes ? (data.ventesEstimees / data.abonnes * 100).toFixed(1) : 0;
-      
-      // Calcul du score de performance
       data.performanceScore = calculatePerformanceScore(data);
-      
-      // Calcul des statistiques de performance
       data.performanceStats = calculatePerformanceStats(data);
 
       if (!data.boutique) {
@@ -291,7 +285,6 @@ const App = () => {
       throw new Error('Erreur lors de l\'analyse du profil. Assurez-vous d\'avoir copié tout le contenu de la page du profil Vinted.');
     }
   };
-
   const handleReset = () => {
     setInputText('');
     setProfileData(null);
@@ -362,7 +355,7 @@ const App = () => {
       
       doc.autoTable({
         startY: doc.lastAutoTable.finalY + 25,
-        head: [['Période', 'Ventes']],
+        head: [['Période', 'Nombre de ventes']],
         body: salesData
       });
     }
@@ -407,6 +400,26 @@ const App = () => {
   const renderComparison = () => {
     if (!profileData || !secondProfileData) return null;
 
+    // Créer une plage de dates communes pour les deux profils
+    const allDates = [
+      ...profileData.salesTimeline.map(item => item.date),
+      ...secondProfileData.salesTimeline.map(item => item.date)
+    ];
+    const { start, end } = getDateRange(allDates);
+    const commonPeriod = generateDatePeriod(start, end);
+
+    // Remplir les données pour chaque profil
+    const mergedData = Object.keys(commonPeriod).map(monthKey => {
+      const firstProfileSale = profileData.salesTimeline.find(item => item.date === monthKey)?.ventes || 0;
+      const secondProfileSale = secondProfileData.salesTimeline.find(item => item.date === monthKey)?.ventes || 0;
+      return {
+        date: monthKey,
+        mois: new Date(monthKey).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }),
+        [profileData.boutique]: firstProfileSale,
+        [secondProfileData.boutique]: secondProfileSale
+      };
+    });
+
     return (
       <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
         <h2 className="text-2xl font-bold mb-4">Comparaison des profils</h2>
@@ -438,6 +451,7 @@ const App = () => {
           <LineChart
             width={800}
             height={300}
+            data={mergedData}
             margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
           >
             <CartesianGrid strokeDasharray="3 3" />
@@ -452,18 +466,14 @@ const App = () => {
             <Legend />
             <Line 
               type="monotone" 
-              data={profileData.salesTimeline}
-              dataKey="ventes" 
+              dataKey={profileData.boutique}
               stroke="#3B82F6" 
-              name={profileData.boutique}
               strokeWidth={2}
             />
             <Line 
               type="monotone" 
-              data={secondProfileData.salesTimeline}
-              dataKey="ventes" 
+              dataKey={secondProfileData.boutique}
               stroke="#10B981" 
-              name={secondProfileData.boutique}
               strokeWidth={2}
             />
           </LineChart>
