@@ -336,3 +336,90 @@ const App = () => {
                       <div className="flex justify-between items-center font-bold">
                         <span>Total analysé</span>
                         <span>{profileData.totalAnalyz
+                        <span>Total analysé</span>
+                        <span>{profileData.totalAnalyzedComments} ventes</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-8">
+              <div>
+                <h3 className="text-xl font-bold mb-4">Statistiques générales</h3>
+                <div className="overflow-x-auto">
+                  <BarChart
+                    width={600}
+                    height={300}
+                    data={[{
+                      name: 'Engagement',
+                      'Ventes estimées': profileData.ventesEstimees,
+                      'Ventes min.': profileData.ventesMinEstimees,
+                      Abonnés: profileData.abonnes || 0,
+                      Abonnements: profileData.abonnements
+                    }]}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="Ventes estimées" fill="#3B82F6" />
+                    <Bar dataKey="Ventes min." fill="#93C5FD" />
+                    <Bar dataKey="Abonnés" fill="#10B981" />
+                    <Bar dataKey="Abonnements" fill="#6366F1" />
+                  </BarChart>
+                </div>
+              </div>
+
+              {profileData.salesDistribution && profileData.salesDistribution.length > 0 && (
+                <div>
+                  <h3 className="text-xl font-bold mb-4">Répartition des ventes par pays</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <PieChart width={600} height={400}>
+                      <Pie
+                        data={profileData.salesDistribution}
+                        cx={300}
+                        cy={200}
+                        labelLine={false}
+                        label={({ name, percentage }) => `${name} (${percentage}%)`}
+                        outerRadius={160}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {profileData.salesDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-4 mt-8">
+              <button
+                className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+                onClick={handleReset}
+              >
+                Nouvelle analyse
+              </button>
+              <button
+                className="flex-1 bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors"
+                onClick={generatePDF}
+              >
+                Exporter en PDF
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default App;
