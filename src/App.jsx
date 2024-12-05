@@ -34,18 +34,19 @@ const App = () => {
         data.abonnes = parseInt(abonnesMatch[1]);
       }
 
-      // Extraction du nombre d'abonnements
+      // Extraction du nombre d'abonnements et définition à 0 si non trouvé
       const abonnementsPattern = /(\d+)\s*\nAbonnement/;
       const abonnementsMatch = text.match(abonnementsPattern);
-      if (abonnementsMatch) {
-        data.abonnements = parseInt(abonnementsMatch[1]);
-      }
+      data.abonnements = abonnementsMatch ? parseInt(abonnementsMatch[1]) : 0;
 
-      // Extraction du lieu
+      // Extraction du lieu et simplification pour ne garder que le pays
       const lieuPattern = /À propos :\s*([^\n]+)/;
       const lieuMatch = text.match(lieuPattern);
       if (lieuMatch) {
-        data.lieu = lieuMatch[1].trim();
+        const lieu = lieuMatch[1].trim();
+        const pays = ['France', 'Belgique', 'Suisse', 'Luxembourg', 'Pays-Bas', 'Espagne', 'Italie', 'Allemagne'];
+        const paysDetecte = pays.find(p => lieu.includes(p));
+        data.lieu = paysDetecte || lieu;
       }
 
       // Extraction de la note et du nombre total d'évaluations
@@ -54,42 +55,35 @@ const App = () => {
       if (noteMatch) {
         data.note = parseFloat(noteMatch[1]);
         data.nombreEvaluations = parseInt(noteMatch[2]);
-        // Calcul des ventes avec marge d'erreur de 10% uniquement à la baisse
         data.ventesEstimees = data.nombreEvaluations;
         data.ventesMinEstimees = Math.floor(data.nombreEvaluations * 0.9);
       }
 
-      // Extraction des commentaires
+      // Extraction des 5 derniers commentaires
       const comments = [];
       const lines = text.split('\n');
-      
-      for (let i = 0; i < lines.length - 1; i++) {
+      let commentCount = 0;
+
+      for (let i = 0; i < lines.length && commentCount < 5; i++) {
         const line = lines[i].trim();
+        const nextLine = lines[i + 1]?.trim() || '';
         
-        // Pattern pour détecter les commentaires
-        const commentPattern = /^\*\*([^*]+)\*\*\s*\nil y a\s+([^\n]+)/;
-        const match = line.match(commentPattern);
-        
-        if (match && match[1] !== 'Vinted') {
-          const comment = {
-            user: match[1].trim(),
-            time: match[2].trim(),
-            text: ''
-          };
+        // Pattern pour détecter les commentaires avec **utilisateur**
+        if (line.startsWith('**') && line.includes('**') && line.toLowerCase().includes('il y a')) {
+          const userMatch = line.match(/^\*\*([^*]+)\*\*/);
+          const timeMatch = line.match(/il y a ([^*]+)$/i);
           
-          // Regarder la ligne suivante pour le texte du commentaire
-          if (i + 1 < lines.length) {
-            const nextLine = lines[i + 1].trim();
-            if (!nextLine.startsWith('**')) {
-              comment.text = nextLine;
-              i++; // Sauter la ligne du texte
-            }
+          if (userMatch && timeMatch && userMatch[1] !== 'Vinted') {
+            comments.push({
+              user: userMatch[1].trim(),
+              time: timeMatch[1].trim(),
+              text: !nextLine.startsWith('**') ? nextLine : ''
+            });
+            commentCount++;
           }
-          
-          comments.push(comment);
         }
       }
-      
+
       data.comments = comments;
 
       if (!data.boutique) {
@@ -126,7 +120,7 @@ const App = () => {
       ['Boutique', profileData.boutique],
       ['Ventes estimées', `${profileData.ventesMinEstimees} - ${profileData.ventesEstimees} (-10%)`],
       ['Abonnés', profileData.abonnes?.toString() || 'N/A'],
-      ['Abonnements', profileData.abonnements?.toString() || 'N/A'],
+      ['Abonnements', profileData.abonnements.toString()],
       ['Lieu', profileData.lieu || 'N/A'],
       ['Note', `${profileData.note}/5 (${profileData.nombreEvaluations} évaluations)`]
     ];
@@ -233,8 +227,10 @@ const App = () => {
                     {profileData.ventesMinEstimees} - {profileData.ventesEstimees}{' '}
                     <span className="text-gray-500 text-sm">(marge d'erreur -10%)</span>
                   </li>
-                  {profileData.abonnes && <li><span className="font-medium">Abonnés:</span> {profileData.abonnes}</li>}
-                  {profileData.abonnements && <li><span className="font-medium">Abonnements:</span> {profileData.abonnements}</li>}
+                  {profileData.abonnes !== undefined && (
+                    <li><span className="font-medium">Abonnés:</span> {profileData.abonnes}</li>
+                  )}
+                  <li><span className="font-medium">Abonnements:</span> {profileData.abonnements}</li>
                   {profileData.lieu && <li><span className="font-medium">Lieu:</span> {profileData.lieu}</li>}
                   {profileData.note && (
                     <li>
@@ -247,11 +243,11 @@ const App = () => {
 
               {profileData.comments && profileData.comments.length > 0 && (
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-bold mb-2">Derniers commentaires</h3>
+                  <h3 className="font-bold mb-2">Derniers commentaires ({profileData.comments.length})</h3>
                   <div className="max-h-96 overflow-y-auto">
                     <ul className="space-y-2">
                       {profileData.comments.map((comment, index) => (
-                        <li key={index} className="border-b border-gray-200 pb-2">
+                        <li key={index} className="border-b border-gray-200 pb-2 last:border-b-0">
                           <span className="font-medium">{comment.user}</span>
                           {' - '}
                           <span className="text-gray-600">{comment.time}</span>
@@ -278,7 +274,7 @@ const App = () => {
                       'Ventes estimées': profileData.ventesEstimees,
                       'Ventes min.': profileData.ventesMinEstimees,
                       Abonnés: profileData.abonnes || 0,
-                      Abonnements: profileData.abonnements || 0
+                      Abonnements: profileData.abonnements
                     }]}
                     margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
                   >
