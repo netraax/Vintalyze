@@ -7,9 +7,8 @@ import {
   CartesianGrid, 
   Tooltip, 
   Legend,
-  PieChart,
-  Pie,
-  Cell
+  LineChart,
+  Line
 } from 'recharts';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -18,6 +17,44 @@ const App = () => {
   const [inputText, setInputText] = useState('');
   const [profileData, setProfileData] = useState(null);
   const [error, setError] = useState('');
+
+  // Fonction pour convertir les dates relatives en dates absolues
+  const convertRelativeDateToAbsolute = (relativeDate) => {
+    const now = new Date();
+    const parts = relativeDate.toLowerCase().match(/(\d+)\s+(minute|heure|jour|semaine|mois|an|années|ans)/);
+    
+    if (!parts) return null;
+    
+    const amount = parseInt(parts[1]);
+    const unit = parts[2];
+    
+    let date = new Date(now);
+    
+    switch (unit) {
+      case 'minute':
+        date.setMinutes(date.getMinutes() - amount);
+        break;
+      case 'heure':
+        date.setHours(date.getHours() - amount);
+        break;
+      case 'jour':
+        date.setDate(date.getDate() - amount);
+        break;
+      case 'semaine':
+        date.setDate(date.getDate() - (amount * 7));
+        break;
+      case 'mois':
+        date.setMonth(date.getMonth() - amount);
+        break;
+      case 'an':
+      case 'ans':
+      case 'années':
+        date.setFullYear(date.getFullYear() - amount);
+        break;
+    }
+    
+    return date;
+  };
 
   const parseVintedProfile = (text) => {
     try {
@@ -62,6 +99,45 @@ const App = () => {
         data.ventesMinEstimees = Math.floor(data.nombreEvaluations * 0.9);
       }
 
+      // Analyse temporelle des ventes
+      const salesByMonth = {};
+      const timePeriod = 12; // Derniers mois à analyser
+      
+      // Initialiser les 12 derniers mois
+      for (let i = 0; i < timePeriod; i++) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthKey = date.toISOString().slice(0, 7); // Format: "YYYY-MM"
+        salesByMonth[monthKey] = 0;
+      }
+
+      // Extraire et analyser les dates des commentaires
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.includes('il y a')) {
+          const timeMatch = line.match(/il y a ([^*\n]+)/i);
+          if (timeMatch && !line.includes('Vinted')) { // Exclure les commentaires automatiques de Vinted
+            const absoluteDate = convertRelativeDateToAbsolute(timeMatch[1]);
+            if (absoluteDate) {
+              const monthKey = absoluteDate.toISOString().slice(0, 7);
+              if (salesByMonth.hasOwnProperty(monthKey)) {
+                salesByMonth[monthKey]++;
+              }
+            }
+          }
+        }
+      }
+
+      // Convertir en format pour le graphique
+      data.salesTimeline = Object.entries(salesByMonth)
+        .map(([date, count]) => ({
+          date: date,
+          ventes: count,
+          mois: new Date(date).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
       if (!data.boutique) {
         throw new Error('Impossible de trouver le nom de la boutique');
       }
@@ -69,7 +145,7 @@ const App = () => {
       return data;
     } catch (err) {
       console.error('Erreur de parsing:', err);
-      throw new Error('Erreur lors de l\'analyse du profil. Assurez-vous d\'avoir copié tout le contenu de la page du profil Vinted.');
+      throw new Error('Erreur lors de l\'analyse du profil.');
     }
   };
 
@@ -106,8 +182,23 @@ const App = () => {
       head: [['Métrique', 'Valeur']],
       body: info
     });
+
+    if (profileData.salesTimeline && profileData.salesTimeline.length > 0) {
+      doc.setFontSize(16);
+      doc.text('Évolution des ventes', 20, doc.lastAutoTable.finalY + 20);
+
+      const salesData = profileData.salesTimeline.map(item => [
+        item.mois,
+        item.ventes.toString()
+      ]);
+      
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 25,
+        head: [['Période', 'Nombre de ventes']],
+        body: salesData
+      });
+    }
     
-    // Sauvegarde du PDF
     doc.save(`vintalyze-${profileData.boutique}.pdf`);
   };
 
@@ -202,7 +293,7 @@ const App = () => {
 
             <div className="space-y-8">
               <div>
-                <h3 className="text-xl font-bold mb-4">Statistiques</h3>
+                <h3 className="text-xl font-bold mb-4">Statistiques globales</h3>
                 <div className="overflow-x-auto">
                   <BarChart
                     width={600}
@@ -228,6 +319,64 @@ const App = () => {
                   </BarChart>
                 </div>
               </div>
+
+              {profileData.salesTimeline && profileData.salesTimeline.length > 0 && (
+                <div>
+                  <h3 className="text-xl font-bold mb-4">Évolution des ventes sur 12 mois</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg overflow-x-auto">
+                    <LineChart
+                      width={800}
+                      height={300}
+                      data={profileData.salesTimeline}
+                      margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        dataKey="mois" 
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line 
+                        type="monotone" 
+                        dataKey="ventes" 
+                        stroke="#3B82F6" 
+                        name="Ventes"
+                        strokeWidth={2}
+                      />
+                    </LineChart>
+                  </div>
+                                <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Période
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Nombre de ventes
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {profileData.salesTimeline.map((item, index) => (
+                          <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {item.mois}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {item.ventes}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-4 mt-8">
