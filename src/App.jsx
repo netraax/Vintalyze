@@ -18,11 +18,11 @@ const App = () => {
     try {
       const data = {};
       
-      // Extraction du nom de la boutique (première ligne après "Logo Vinted")
-      const boutiquePattern = /Logo Vinted\s+Rechercher des membres\s+([^\n]+)/;
+      // Extraction du nom de la boutique
+      const boutiquePattern = /Boutique:\s*(\S+)|^([^\s\n]+)\s*À propos/m;
       const boutiqueMatch = text.match(boutiquePattern);
       if (boutiqueMatch) {
-        data.boutique = boutiqueMatch[1].trim();
+        data.boutique = boutiqueMatch[1] || boutiqueMatch[2];
       }
 
       // Extraction du nombre d'abonnés
@@ -46,57 +46,50 @@ const App = () => {
         data.lieu = lieuMatch[1].trim();
       }
 
-      // Extraction de la note
-      const notePattern = /\n(\d+\.?\d*)\s*\n\((\d+)\)\s*Évaluations/;
+      // Extraction de la note et du nombre total d'évaluations
+      const notePattern = /(\d+\.?\d*)\s*\n\s*\((\d+)\)/;
       const noteMatch = text.match(notePattern);
       if (noteMatch) {
         data.note = parseFloat(noteMatch[1]);
         data.nombreEvaluations = parseInt(noteMatch[2]);
+        data.ventes = data.nombreEvaluations; // Utilisation du nombre total d'évaluations
       }
 
       // Extraction des commentaires
       const comments = [];
       const lines = text.split('\n');
-      let currentComment = null;
+      let i = 0;
 
-      for (let i = 0; i < lines.length; i++) {
+      while (i < lines.length) {
         const line = lines[i].trim();
         
-        // Pattern pour détecter un nouveau commentaire
-        const commentPattern = /^([^\s]+)\s+il y a\s+([^\n]+)$/;
-        const match = line.match(commentPattern);
+        // On cherche les lignes qui correspondent au format "username il y a X temps"
+        const userTimePattern = /^([^\s]+)\s+il y a\s+([^\n]+)$/;
+        const userMatch = line.match(userTimePattern);
 
-        if (match && match[1] !== 'Vinted') {
-          if (currentComment) {
-            comments.push(currentComment);
-          }
-          currentComment = {
-            user: match[1],
-            time: match[2],
+        if (userMatch && userMatch[1] !== 'Vinted' && userMatch[1] !== 'kymordz') {
+          const comment = {
+            user: userMatch[1],
+            time: userMatch[2],
             text: ''
           };
-          
-          // Vérifie la ligne suivante pour le contenu du commentaire
-          if (i + 1 < lines.length && !lines[i + 1].match(commentPattern)) {
-            currentComment.text = lines[i + 1].trim();
-          }
-        }
-      }
 
-      if (currentComment) {
-        comments.push(currentComment);
+          // On regarde la ligne suivante pour le contenu du commentaire
+          if (i + 1 < lines.length) {
+            const nextLine = lines[i + 1].trim();
+            if (!nextLine.match(userTimePattern) && nextLine !== '') {
+              comment.text = nextLine;
+              i++; // On avance d'une ligne supplémentaire
+            }
+          }
+
+          comments.push(comment);
+        }
+        i++;
       }
 
       data.comments = comments;
 
-      // Comptage des ventes basé sur les évaluations
-      const evaluationsPattern = /Évaluations des membres \((\d+)\)/;
-      const evaluationsMatch = text.match(evaluationsPattern);
-      if (evaluationsMatch) {
-        data.ventes = parseInt(evaluationsMatch[1]);
-      }
-
-      // Vérification des données minimales
       if (!data.boutique) {
         throw new Error('Impossible de trouver le nom de la boutique');
       }
@@ -177,16 +170,11 @@ const App = () => {
                 <h3 className="font-bold mb-2">Informations générales</h3>
                 <ul className="space-y-2">
                   <li><span className="font-medium">Boutique:</span> {profileData.boutique}</li>
-                  {profileData.ventes && <li><span className="font-medium">Évaluations:</span> {profileData.ventes}</li>}
+                  {profileData.nombreEvaluations && <li><span className="font-medium">Évaluations:</span> {profileData.nombreEvaluations}</li>}
                   {profileData.abonnes && <li><span className="font-medium">Abonnés:</span> {profileData.abonnes}</li>}
                   {profileData.abonnements && <li><span className="font-medium">Abonnements:</span> {profileData.abonnements}</li>}
                   {profileData.lieu && <li><span className="font-medium">Lieu:</span> {profileData.lieu}</li>}
-                  {profileData.note && (
-                    <li>
-                      <span className="font-medium">Note:</span> {profileData.note}/5 
-                      {profileData.nombreEvaluations && ` (${profileData.nombreEvaluations} évaluations)`}
-                    </li>
-                  )}
+                  {profileData.note && <li><span className="font-medium">Note:</span> {profileData.note}/5</li>}
                 </ul>
               </div>
 
@@ -220,7 +208,7 @@ const App = () => {
                     height={300}
                     data={[{
                       name: 'Engagement',
-                      Évaluations: profileData.ventes || 0,
+                      Évaluations: profileData.nombreEvaluations || 0,
                       Abonnés: profileData.abonnes || 0,
                       Abonnements: profileData.abonnements || 0
                     }]}
