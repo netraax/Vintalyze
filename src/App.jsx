@@ -54,33 +54,47 @@ const App = () => {
       if (noteMatch) {
         data.note = parseFloat(noteMatch[1]);
         data.nombreEvaluations = parseInt(noteMatch[2]);
-        // Calcul des ventes estimées avec marge d'erreur de 10%
-        data.ventesMin = Math.floor(data.nombreEvaluations * 0.9);
-        data.ventesMax = Math.ceil(data.nombreEvaluations * 1.1);
+        // Calcul des ventes avec marge d'erreur de 10% uniquement à la baisse
+        data.ventesEstimees = data.nombreEvaluations;
+        data.ventesMinEstimees = Math.floor(data.nombreEvaluations * 0.9);
       }
 
-      // Extraction des commentaires en évitant les commentaires du vendeur
+      // Extraction des commentaires
       const comments = [];
       const lines = text.split('\n');
+      
       for (let i = 0; i < lines.length - 1; i++) {
-        const currentLine = lines[i].trim();
-        const nextLine = lines[i + 1].trim();
+        const line = lines[i].trim();
         
-        const commentPattern = /^([^\s]+)\s+il y a\s+([^\n]+)$/;
-        const currentMatch = currentLine.match(commentPattern);
+        // Pattern pour détecter les commentaires
+        const commentPattern = /^\*\*([^*]+)\*\*\s*\nil y a\s+([^\n]+)/;
+        const match = line.match(commentPattern);
         
-        if (currentMatch && 
-            currentMatch[1] !== 'Vinted' && 
-            !lines[i-1]?.includes(data.boutique)) {
-          comments.push({
-            user: currentMatch[1],
-            time: currentMatch[2],
-            text: !nextLine.match(commentPattern) ? nextLine : ''
-          });
+        if (match && match[1] !== 'Vinted') {
+          const comment = {
+            user: match[1].trim(),
+            time: match[2].trim(),
+            text: ''
+          };
+          
+          // Regarder la ligne suivante pour le texte du commentaire
+          if (i + 1 < lines.length) {
+            const nextLine = lines[i + 1].trim();
+            if (!nextLine.startsWith('**')) {
+              comment.text = nextLine;
+              i++; // Sauter la ligne du texte
+            }
+          }
+          
+          comments.push(comment);
         }
       }
       
       data.comments = comments;
+
+      if (!data.boutique) {
+        throw new Error('Impossible de trouver le nom de la boutique');
+      }
 
       return data;
     } catch (err) {
@@ -110,7 +124,7 @@ const App = () => {
     
     const info = [
       ['Boutique', profileData.boutique],
-      ['Ventes estimées', `${profileData.ventesMin} - ${profileData.ventesMax} (±10%)`],
+      ['Ventes estimées', `${profileData.ventesMinEstimees} - ${profileData.ventesEstimees} (-10%)`],
       ['Abonnés', profileData.abonnes?.toString() || 'N/A'],
       ['Abonnements', profileData.abonnements?.toString() || 'N/A'],
       ['Lieu', profileData.lieu || 'N/A'],
@@ -214,7 +228,11 @@ const App = () => {
                 <h3 className="font-bold mb-2">Informations générales</h3>
                 <ul className="space-y-2">
                   <li><span className="font-medium">Boutique:</span> {profileData.boutique}</li>
-                  <li><span className="font-medium">Ventes estimées:</span> {profileData.ventesMin} - {profileData.ventesMax} (±10%)</li>
+                  <li>
+                    <span className="font-medium">Ventes estimées:</span>{' '}
+                    {profileData.ventesMinEstimees} - {profileData.ventesEstimees}{' '}
+                    <span className="text-gray-500 text-sm">(marge d'erreur -10%)</span>
+                  </li>
                   {profileData.abonnes && <li><span className="font-medium">Abonnés:</span> {profileData.abonnes}</li>}
                   {profileData.abonnements && <li><span className="font-medium">Abonnements:</span> {profileData.abonnements}</li>}
                   {profileData.lieu && <li><span className="font-medium">Lieu:</span> {profileData.lieu}</li>}
@@ -257,7 +275,8 @@ const App = () => {
                     height={300}
                     data={[{
                       name: 'Engagement',
-                      'Ventes estimées': Math.floor((profileData.ventesMin + profileData.ventesMax) / 2),
+                      'Ventes estimées': profileData.ventesEstimees,
+                      'Ventes min.': profileData.ventesMinEstimees,
                       Abonnés: profileData.abonnes || 0,
                       Abonnements: profileData.abonnements || 0
                     }]}
@@ -269,6 +288,7 @@ const App = () => {
                     <Tooltip />
                     <Legend />
                     <Bar dataKey="Ventes estimées" fill="#3B82F6" />
+                    <Bar dataKey="Ventes min." fill="#93C5FD" />
                     <Bar dataKey="Abonnés" fill="#10B981" />
                     <Bar dataKey="Abonnements" fill="#6366F1" />
                   </BarChart>
