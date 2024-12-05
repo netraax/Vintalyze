@@ -8,7 +8,12 @@ import {
   Tooltip, 
   Legend,
   LineChart,
-  Line
+  Line,
+  RadialBarChart,
+  RadialBar,
+  PolarGrid,
+  PolarAngleAxis,
+  ResponsiveContainer
 } from 'recharts';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -17,8 +22,87 @@ const App = () => {
   const [inputText, setInputText] = useState('');
   const [profileData, setProfileData] = useState(null);
   const [error, setError] = useState('');
+  const [secondProfileText, setSecondProfileText] = useState('');
+  const [secondProfileData, setSecondProfileData] = useState(null);
+  const [showComparison, setShowComparison] = useState(false);
 
-  // Fonction pour convertir les dates relatives en dates absolues
+  // Calcul du score de performance (0-100)
+  const calculatePerformanceScore = (data) => {
+    if (!data) return 0;
+    
+    // Facteurs de pondération
+    const weights = {
+      rating: 0.3,        // 30% pour la note
+      sales: 0.3,         // 30% pour les ventes
+      engagement: 0.2,    // 20% pour l'engagement
+      consistency: 0.2    // 20% pour la régularité des ventes
+    };
+
+    // Score de la note (5/5 = 100%)
+    const ratingScore = (data.note / 5) * 100;
+
+    // Score des ventes (basé sur une échelle logarithmique)
+    const salesScore = Math.min(100, (Math.log10(data.ventesEstimees) / Math.log10(1000)) * 100);
+
+    // Score d'engagement (ratio ventes/abonnés, max 100%)
+    const engagementScore = data.abonnes ? Math.min(100, (data.ventesEstimees / data.abonnes) * 100) : 50;
+
+    // Score de régularité (basé sur l'écart-type des ventes mensuelles)
+    let consistencyScore = 50; // Valeur par défaut
+    if (data.salesTimeline && data.salesTimeline.length > 0) {
+      const salesValues = data.salesTimeline.map(item => item.ventes);
+      const mean = salesValues.reduce((a, b) => a + b, 0) / salesValues.length;
+      const stdDev = Math.sqrt(salesValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / salesValues.length);
+      const cv = stdDev / mean; // Coefficient de variation
+      consistencyScore = Math.max(0, 100 - (cv * 100));
+    }
+
+    // Score final pondéré
+    const finalScore = Math.round(
+      ratingScore * weights.rating +
+      salesScore * weights.sales +
+      engagementScore * weights.engagement +
+      consistencyScore * weights.consistency
+    );
+
+    return {
+      total: finalScore,
+      details: {
+        rating: Math.round(ratingScore),
+        sales: Math.round(salesScore),
+        engagement: Math.round(engagementScore),
+        consistency: Math.round(consistencyScore)
+      }
+    };
+  };
+
+  // Calcul des statistiques de performance
+  const calculatePerformanceStats = (data) => {
+    if (!data || !data.salesTimeline) return null;
+
+    const sales = data.salesTimeline.map(item => item.ventes);
+    const totalSales = sales.reduce((a, b) => a + b, 0);
+    const avgSalesPerMonth = totalSales / sales.length;
+    const bestMonth = [...data.salesTimeline].sort((a, b) => b.ventes - a.ventes)[0];
+    
+    // Calcul de la tendance
+    const trend = sales.reduce((acc, curr, idx) => {
+      if (idx === 0) return 0;
+      return acc + (curr - sales[idx - 1]);
+    }, 0) / (sales.length - 1);
+
+    // Prévision pour le mois prochain (basée sur la tendance)
+    const lastMonthSales = sales[sales.length - 1];
+    const prediction = Math.max(0, Math.round(lastMonthSales + trend));
+
+    return {
+      avgSalesPerMonth: Math.round(avgSalesPerMonth),
+      bestMonth: bestMonth,
+      trend: trend > 0 ? 'positive' : trend < 0 ? 'negative' : 'stable',
+      prediction: prediction
+    };
+  };
+
   const convertRelativeDateToAbsolute = (relativeDate) => {
     const now = new Date();
     const parts = relativeDate.toLowerCase().match(/(\d+)\s+(minute|heure|jour|semaine|mois|an|années|ans)/);
@@ -55,7 +139,6 @@ const App = () => {
     
     return date;
   };
-
   const parseVintedProfile = (text) => {
     try {
       const data = {};
@@ -74,12 +157,12 @@ const App = () => {
         data.abonnes = parseInt(abonnesMatch[1]);
       }
 
-      // Extraction du nombre d'abonnements et définition à 0 si non trouvé
+      // Extraction du nombre d'abonnements
       const abonnementsPattern = /(\d+)\s*\nAbonnement/;
       const abonnementsMatch = text.match(abonnementsPattern);
       data.abonnements = abonnementsMatch ? parseInt(abonnementsMatch[1]) : 0;
 
-      // Extraction du lieu et simplification pour ne garder que le pays
+      // Extraction du lieu
       const lieuPattern = /À propos :\s*([^\n]+)/;
       const lieuMatch = text.match(lieuPattern);
       if (lieuMatch) {
@@ -89,7 +172,7 @@ const App = () => {
         data.lieu = paysDetecte || lieu;
       }
 
-      // Extraction de la note et du nombre total d'évaluations
+      // Extraction de la note et du nombre d'évaluations
       const notePattern = /(\d+\.?\d*)\s*\n\s*\((\d+)\)/;
       const noteMatch = text.match(notePattern);
       if (noteMatch) {
@@ -101,23 +184,21 @@ const App = () => {
 
       // Analyse temporelle des ventes
       const salesByMonth = {};
-      const timePeriod = 12; // Derniers mois à analyser
+      const timePeriod = 12;
       
-      // Initialiser les 12 derniers mois
       for (let i = 0; i < timePeriod; i++) {
         const date = new Date();
         date.setMonth(date.getMonth() - i);
-        const monthKey = date.toISOString().slice(0, 7); // Format: "YYYY-MM"
+        const monthKey = date.toISOString().slice(0, 7);
         salesByMonth[monthKey] = 0;
       }
 
-      // Extraire et analyser les dates des commentaires
       const lines = text.split('\n');
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (line.includes('il y a')) {
           const timeMatch = line.match(/il y a ([^*\n]+)/i);
-          if (timeMatch && !line.includes('Vinted')) { // Exclure les commentaires automatiques de Vinted
+          if (timeMatch && !line.includes('Vinted')) {
             const absoluteDate = convertRelativeDateToAbsolute(timeMatch[1]);
             if (absoluteDate) {
               const monthKey = absoluteDate.toISOString().slice(0, 7);
@@ -129,7 +210,6 @@ const App = () => {
         }
       }
 
-      // Convertir en format pour le graphique
       data.salesTimeline = Object.entries(salesByMonth)
         .map(([date, count]) => ({
           date: date,
@@ -138,6 +218,15 @@ const App = () => {
         }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
+      // Calcul du taux d'engagement
+      data.engagementRate = data.abonnes ? (data.ventesEstimees / data.abonnes * 100).toFixed(1) : 0;
+      
+      // Calcul du score de performance
+      data.performanceScore = calculatePerformanceScore(data);
+      
+      // Calcul des statistiques de performance
+      data.performanceStats = calculatePerformanceStats(data);
+
       if (!data.boutique) {
         throw new Error('Impossible de trouver le nom de la boutique');
       }
@@ -145,7 +234,7 @@ const App = () => {
       return data;
     } catch (err) {
       console.error('Erreur de parsing:', err);
-      throw new Error('Erreur lors de l\'analyse du profil.');
+      throw new Error('Erreur lors de l\'analyse du profil. Assurez-vous d\'avoir copié tout le contenu de la page du profil Vinted.');
     }
   };
 
@@ -153,6 +242,9 @@ const App = () => {
     setInputText('');
     setProfileData(null);
     setError('');
+    setSecondProfileText('');
+    setSecondProfileData(null);
+    setShowComparison(false);
   };
 
   const generatePDF = () => {
@@ -174,7 +266,9 @@ const App = () => {
       ['Abonnés', profileData.abonnes?.toString() || 'N/A'],
       ['Abonnements', profileData.abonnements.toString()],
       ['Lieu', profileData.lieu || 'N/A'],
-      ['Note', `${profileData.note}/5 (${profileData.nombreEvaluations} évaluations)`]
+      ['Note', `${profileData.note}/5 (${profileData.nombreEvaluations} évaluations)`],
+      ['Taux d\'engagement', `${profileData.engagementRate}%`],
+      ['Score de performance', `${profileData.performanceScore.total}/100`]
     ];
     
     doc.autoTable({
@@ -183,7 +277,27 @@ const App = () => {
       body: info
     });
 
-    if (profileData.salesTimeline && profileData.salesTimeline.length > 0) {
+    // Statistiques de performance
+    if (profileData.performanceStats) {
+      doc.setFontSize(16);
+      doc.text('Statistiques de performance', 20, doc.lastAutoTable.finalY + 20);
+
+      const perfStats = [
+        ['Ventes moyennes par mois', profileData.performanceStats.avgSalesPerMonth.toString()],
+        ['Meilleur mois', `${profileData.performanceStats.bestMonth.mois} (${profileData.performanceStats.bestMonth.ventes} ventes)`],
+        ['Tendance', profileData.performanceStats.trend],
+        ['Prévision mois prochain', profileData.performanceStats.prediction.toString()]
+      ];
+
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 25,
+        head: [['Métrique', 'Valeur']],
+        body: perfStats
+      });
+    }
+
+    // Évolution des ventes
+    if (profileData.salesTimeline?.length > 0) {
       doc.setFontSize(16);
       doc.text('Évolution des ventes', 20, doc.lastAutoTable.finalY + 20);
 
@@ -194,7 +308,7 @@ const App = () => {
       
       doc.autoTable({
         startY: doc.lastAutoTable.finalY + 25,
-        head: [['Période', 'Nombre de ventes']],
+        head: [['Période', 'Ventes']],
         body: salesData
       });
     }
@@ -216,6 +330,92 @@ const App = () => {
       setError(err.message);
       setProfileData(null);
     }
+  };
+
+  const handleCompareProfile = () => {
+    try {
+      if (!secondProfileText.trim()) {
+        setError('Veuillez coller le contenu du second profil Vinted');
+        return;
+      }
+
+      const data = parseVintedProfile(secondProfileText);
+      setSecondProfileData(data);
+      setShowComparison(true);
+      setError('');
+    } catch (err) {
+      setError(err.message);
+      setSecondProfileData(null);
+    }
+  };
+
+  // JSX pour le rendu de la comparaison
+  const renderComparison = () => {
+    if (!profileData || !secondProfileData) return null;
+
+    return (
+      <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-2xl font-bold mb-4">Comparaison des profils</h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="font-bold mb-2">{profileData.boutique}</h3>
+            <ul className="space-y-2">
+              <li>Ventes: {profileData.ventesEstimees}</li>
+              <li>Taux d'engagement: {profileData.engagementRate}%</li>
+              <li>Score de performance: {profileData.performanceScore.total}/100</li>
+              <li>Note: {profileData.note}/5</li>
+            </ul>
+          </div>
+          
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="font-bold mb-2">{secondProfileData.boutique}</h3>
+            <ul className="space-y-2">
+              <li>Ventes: {secondProfileData.ventesEstimees}</li>
+              <li>Taux d'engagement: {secondProfileData.engagementRate}%</li>
+              <li>Score de performance: {secondProfileData.performanceScore.total}/100</li>
+              <li>Note: {secondProfileData.note}/5</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <h3 className="text-xl font-bold mb-4">Comparaison des ventes</h3>
+          <LineChart
+            width={800}
+            height={300}
+            margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="mois" 
+              angle={-45}
+              textAnchor="end"
+              height={60}
+            />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line 
+              type="monotone" 
+              data={profileData.salesTimeline}
+              dataKey="ventes" 
+              stroke="#3B82F6" 
+              name={profileData.boutique}
+              strokeWidth={2}
+            />
+            <Line 
+              type="monotone" 
+              data={secondProfileData.salesTimeline}
+              dataKey="ventes" 
+              stroke="#10B981" 
+              name={secondProfileData.boutique}
+              strokeWidth={2}
+            />
+          </LineChart>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -280,6 +480,7 @@ const App = () => {
                     <li><span className="font-medium">Abonnés:</span> {profileData.abonnes}</li>
                   )}
                   <li><span className="font-medium">Abonnements:</span> {profileData.abonnements}</li>
+                  <li><span className="font-medium">Taux d'engagement:</span> {profileData.engagementRate}%</li>
                   {profileData.lieu && <li><span className="font-medium">Lieu:</span> {profileData.lieu}</li>}
                   {profileData.note && (
                     <li>
@@ -289,95 +490,106 @@ const App = () => {
                   )}
                 </ul>
               </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-bold mb-2">Score de performance</h3>
+                <div className="mb-4">
+                  <div className="text-3xl font-bold text-blue-600">
+                    {profileData.performanceScore.total}/100
+                  </div>
+                </div>
+                <ul className="space-y-2">
+                  <li>
+                    <span className="font-medium">Note:</span> {profileData.performanceScore.details.rating}/100
+                  </li>
+                  <li>
+                    <span className="font-medium">Ventes:</span> {profileData.performanceScore.details.sales}/100
+                  </li>
+                  <li>
+                    <span className="font-medium">Engagement:</span> {profileData.performanceScore.details.engagement}/100
+                  </li>
+                  <li>
+                    <span className="font-medium">Régularité:</span> {profileData.performanceScore.details.consistency}/100
+                  </li>
+                </ul>
+              </div>
             </div>
+
+            {profileData.performanceStats && (
+              <div className="mb-8">
+                <h3 className="text-xl font-bold mb-4">Analyse des performances</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="text-sm text-gray-600">Ventes moyennes par mois</div>
+                    <div className="text-2xl font-bold">{profileData.performanceStats.avgSalesPerMonth}</div>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="text-sm text-gray-600">Meilleur mois</div>
+                    <div className="text-2xl font-bold">{profileData.performanceStats.bestMonth.ventes}</div>
+                    <div className="text-sm text-gray-500">{profileData.performanceStats.bestMonth.mois}</div>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="text-sm text-gray-600">Tendance</div>
+                    <div className="text-2xl font-bold">{profileData.performanceStats.trend}</div>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="text-sm text-gray-600">Prévision mois prochain</div>
+                    <div className="text-2xl font-bold">{profileData.performanceStats.prediction}</div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-8">
               <div>
-                <h3 className="text-xl font-bold mb-4">Statistiques globales</h3>
-                <div className="overflow-x-auto">
-                  <BarChart
-                    width={600}
+                <h3 className="text-xl font-bold mb-4">Évolution des ventes</h3>
+                <div className="bg-gray-50 p-4 rounded-lg overflow-x-auto">
+                  <LineChart
+                    width={800}
                     height={300}
-                    data={[{
-                      name: 'Engagement',
-                      'Ventes estimées': profileData.ventesEstimees,
-                      'Ventes min.': profileData.ventesMinEstimees,
-                      Abonnés: profileData.abonnes || 0,
-                      Abonnements: profileData.abonnements
-                    }]}
-                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    data={profileData.salesTimeline}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
+                    <XAxis 
+                      dataKey="mois" 
+                      angle={-45}
+                      textAnchor="end"
+                      height={60}
+                    />
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="Ventes estimées" fill="#3B82F6" />
-                    <Bar dataKey="Ventes min." fill="#93C5FD" />
-                    <Bar dataKey="Abonnés" fill="#10B981" />
-                    <Bar dataKey="Abonnements" fill="#6366F1" />
-                  </BarChart>
+                    <Line 
+                      type="monotone" 
+                      dataKey="ventes" 
+                      stroke="#3B82F6" 
+                      name="Ventes"
+                      strokeWidth={2}
+                    />
+                  </LineChart>
                 </div>
               </div>
-
-              {profileData.salesTimeline && profileData.salesTimeline.length > 0 && (
-                <div>
-                  <h3 className="text-xl font-bold mb-4">Évolution des ventes sur 12 mois</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg overflow-x-auto">
-                    <LineChart
-                      width={800}
-                      height={300}
-                      data={profileData.salesTimeline}
-                      margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="mois" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={60}
-                      />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line 
-                        type="monotone" 
-                        dataKey="ventes" 
-                        stroke="#3B82F6" 
-                        name="Ventes"
-                        strokeWidth={2}
-                      />
-                    </LineChart>
-                  </div>
-                                <div className="mt-4 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Période
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Nombre de ventes
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {profileData.salesTimeline.map((item, index) => (
-                          <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {item.mois}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {item.ventes}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
             </div>
+
+            {/* Section de comparaison */}
+            {!showComparison ? (
+              <div className="mt-8">
+                <h3 className="text-xl font-bold mb-4">Comparer avec un autre profil</h3>
+                <textarea
+                  className="w-full h-48 p-4 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Collez ici le contenu du second profil Vinted..."
+                  value={secondProfileText}
+                  onChange={(e) => setSecondProfileText(e.target.value)}
+                />
+                <button
+                  className="w-full bg-indigo-500 text-white py-2 px-4 rounded-lg hover:bg-indigo-600 transition-colors"
+                  onClick={handleCompareProfile}
+                >
+                  Comparer les profils
+                </button>
+              </div>
+            ) : renderComparison()}
 
             <div className="flex gap-4 mt-8">
               <button
