@@ -18,6 +18,60 @@ import {
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
+// Remplacer la fonction de détection de langue
+  const detectLanguage = (text) => {
+    try {
+      // Utilisation de linguist.js
+      const result = window.linguist.detect(text);
+      
+      // Mapping des codes de langue vers nos pays
+      const languageToCountry = {
+        'fr': 'France',
+        'es': 'Espagne',
+        'it': 'Italie',
+        'en': 'International',
+        'nl': 'Pays-Bas',
+        'de': 'Allemagne'
+      };
+
+      // Retourner le pays correspondant à la langue détectée
+      const detectedLanguage = result.language; // linguist retourne le code de la langue (fr, es, etc.)
+      return languageToCountry[detectedLanguage] || 'International';
+    } catch (error) {
+      console.error('Erreur de détection de langue:', error);
+      return 'International'; // Par défaut si erreur
+    }
+  };
+
+  // Dans la fonction parseVintedProfile, remplacer la partie qui gère les commentaires :
+  
+  // Analyse des commentaires pour la répartition géographique
+  const salesByCountry = {
+    'France': 0,
+    'Espagne': 0,
+    'Italie': 0,
+    'International': 0,
+    'Pays-Bas': 0,
+    'Allemagne': 0
+  };
+
+  let totalAnalyzedComments = 0;
+  
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const nextLine = lines[i + 1]?.trim() || '';
+
+    if (line.includes('il y a') && !line.includes('Vinted')) {
+      const timeMatch = line.match(/il y a ([^*\n]+)/i);
+      if (timeMatch && nextLine && !nextLine.startsWith('**')) {
+        // Détecter la langue du commentaire
+        const country = detectLanguage(nextLine);
+        salesByCountry[country]++;
+        totalAnalyzedComments++;
+      }
+    }
+  }
 const App = () => {
   const [inputText, setInputText] = useState('');
   const [profileData, setProfileData] = useState(null);
