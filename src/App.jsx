@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { 
   BarChart, 
-  LineChart, 
-  Line, 
   Bar, 
   XAxis, 
   YAxis, 
@@ -20,129 +18,92 @@ const App = () => {
     try {
       const data = {};
       
-      // Recherche du nom de la boutique
-      // On cherche dans plusieurs formats possibles
-      const boutiquePatterns = [
-        /membre depuis[^@]+@([^"\s]+)/i,
-        /profil de ([^"\s]+)/i,
-        /boutique de ([^"\s]+)/i
-      ];
-      
-      for (const pattern of boutiquePatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          data.boutique = match[1].trim();
-          break;
-        }
+      // Extraction du nom de la boutique (première ligne après "Logo Vinted")
+      const boutiquePattern = /Logo Vinted\s+Rechercher des membres\s+([^\n]+)/;
+      const boutiqueMatch = text.match(boutiquePattern);
+      if (boutiqueMatch) {
+        data.boutique = boutiqueMatch[1].trim();
       }
 
-      // Recherche du nombre de ventes
-      // Cherche les chiffres près des mots associés aux ventes
-      const ventesPatterns = [
-        /(\d+)\s*articles?\s*vendus?/i,
-        /(\d+)\s*ventes?/i,
-        /vendu\s*:\s*(\d+)/i
-      ];
-      
-      for (const pattern of ventesPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          data.ventes = parseInt(match[1]);
-          break;
-        }
+      // Extraction du nombre d'abonnés
+      const abonnesPattern = /(\d+)\s*\nAbonnés/;
+      const abonnesMatch = text.match(abonnesPattern);
+      if (abonnesMatch) {
+        data.abonnes = parseInt(abonnesMatch[1]);
       }
 
-      // Recherche des abonnés
-      const abonnesPatterns = [
-        /(\d+)\s*abonn[ée]s?/i,
-        /followers?[^\d]*(\d+)/i
-      ];
-      
-      for (const pattern of abonnesPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          data.abonnes = parseInt(match[1]);
-          break;
-        }
+      // Extraction du nombre d'abonnements
+      const abonnementsPattern = /(\d+)\s*\nAbonnement/;
+      const abonnementsMatch = text.match(abonnementsPattern);
+      if (abonnementsMatch) {
+        data.abonnements = parseInt(abonnementsMatch[1]);
       }
 
-      // Recherche des abonnements
-      const abonnementsPatterns = [
-        /(\d+)\s*abonnements?/i,
-        /following[^\d]*(\d+)/i
-      ];
-      
-      for (const pattern of abonnementsPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          data.abonnements = parseInt(match[1]);
-          break;
-        }
+      // Extraction du lieu
+      const lieuPattern = /À propos :\s*([^\n]+)/;
+      const lieuMatch = text.match(lieuPattern);
+      if (lieuMatch) {
+        data.lieu = lieuMatch[1].trim();
       }
 
-      // Recherche de la localisation
-      const lieuPatterns = [
-        /localis[ée] à ([^,\n]+)/i,
-        /lieu\s*:\s*([^,\n]+)/i,
-        /ville\s*:\s*([^,\n]+)/i
-      ];
-      
-      for (const pattern of lieuPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          data.lieu = match[1].trim();
-          break;
-        }
-      }
-
-      // Recherche de la note
-      const notePatterns = [
-        /(\d[.,]\d+)\s*\/\s*5/i,
-        /note\s*:\s*(\d[.,]\d+)/i,
-        /évaluation[^\d]*(\d[.,]\d+)/i
-      ];
-      
-      for (const pattern of notePatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          data.note = parseFloat(match[1].replace(',', '.'));
-          break;
-        }
+      // Extraction de la note
+      const notePattern = /\n(\d+\.?\d*)\s*\n\((\d+)\)\s*Évaluations/;
+      const noteMatch = text.match(notePattern);
+      if (noteMatch) {
+        data.note = parseFloat(noteMatch[1]);
+        data.nombreEvaluations = parseInt(noteMatch[2]);
       }
 
       // Extraction des commentaires
       const comments = [];
-      const commentLines = text.split('\n');
-      
-      commentLines.forEach(line => {
-        // Cherche les patterns de commentaires typiques
-        const commentPatterns = [
-          /([^\s]+)\s+il y a ([^\n:]+)[:\s]+(.+)/i,
-          /([^\s]+)\s+([^:]+)\s*:\s*(.+)/i
-        ];
+      const lines = text.split('\n');
+      let currentComment = null;
 
-        for (const pattern of commentPatterns) {
-          const match = line.match(pattern);
-          if (match) {
-            comments.push({
-              user: match[1],
-              time: match[2],
-              text: match[3]?.trim() || ''
-            });
-            break;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Pattern pour détecter un nouveau commentaire
+        const commentPattern = /^([^\s]+)\s+il y a\s+([^\n]+)$/;
+        const match = line.match(commentPattern);
+
+        if (match && match[1] !== 'Vinted') {
+          if (currentComment) {
+            comments.push(currentComment);
+          }
+          currentComment = {
+            user: match[1],
+            time: match[2],
+            text: ''
+          };
+          
+          // Vérifie la ligne suivante pour le contenu du commentaire
+          if (i + 1 < lines.length && !lines[i + 1].match(commentPattern)) {
+            currentComment.text = lines[i + 1].trim();
           }
         }
-      });
+      }
+
+      if (currentComment) {
+        comments.push(currentComment);
+      }
 
       data.comments = comments;
 
-      // Vérification des données minimales requises
-      if (!data.boutique || !data.ventes) {
-        throw new Error('Impossible de trouver les informations essentielles du profil');
+      // Comptage des ventes basé sur les évaluations
+      const evaluationsPattern = /Évaluations des membres \((\d+)\)/;
+      const evaluationsMatch = text.match(evaluationsPattern);
+      if (evaluationsMatch) {
+        data.ventes = parseInt(evaluationsMatch[1]);
+      }
+
+      // Vérification des données minimales
+      if (!data.boutique) {
+        throw new Error('Impossible de trouver le nom de la boutique');
       }
 
       return data;
     } catch (err) {
+      console.error('Erreur de parsing:', err);
       throw new Error('Erreur lors de l\'analyse du profil. Assurez-vous d\'avoir copié tout le contenu de la page du profil Vinted.');
     }
   };
@@ -187,7 +148,7 @@ const App = () => {
           </div>
           
           <textarea
-            className="w-full h-32 p-4 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full h-48 p-4 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="Collez ici le contenu copié depuis la page du profil Vinted..."
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
@@ -216,32 +177,36 @@ const App = () => {
                 <h3 className="font-bold mb-2">Informations générales</h3>
                 <ul className="space-y-2">
                   <li><span className="font-medium">Boutique:</span> {profileData.boutique}</li>
-                  <li><span className="font-medium">Ventes:</span> {profileData.ventes}</li>
+                  {profileData.ventes && <li><span className="font-medium">Évaluations:</span> {profileData.ventes}</li>}
                   {profileData.abonnes && <li><span className="font-medium">Abonnés:</span> {profileData.abonnes}</li>}
                   {profileData.abonnements && <li><span className="font-medium">Abonnements:</span> {profileData.abonnements}</li>}
                   {profileData.lieu && <li><span className="font-medium">Lieu:</span> {profileData.lieu}</li>}
-                  {profileData.note && <li><span className="font-medium">Note:</span> {profileData.note}/5</li>}
+                  {profileData.note && (
+                    <li>
+                      <span className="font-medium">Note:</span> {profileData.note}/5 
+                      {profileData.nombreEvaluations && ` (${profileData.nombreEvaluations} évaluations)`}
+                    </li>
+                  )}
                 </ul>
               </div>
 
               {profileData.comments && profileData.comments.length > 0 && (
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="font-bold mb-2">Derniers commentaires</h3>
-                  <ul className="space-y-2">
-                    {profileData.comments.map((comment, index) => (
-                      <li key={index}>
-                        <span className="font-medium">{comment.user}</span>
-                        {' - '}
-                        <span className="text-gray-600">{comment.time}</span>
-                        {comment.text && (
-                          <>
-                            {' : '}
-                            <span className="text-gray-800">{comment.text}</span>
-                          </>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="max-h-96 overflow-y-auto">
+                    <ul className="space-y-2">
+                      {profileData.comments.map((comment, index) => (
+                        <li key={index} className="border-b border-gray-200 pb-2">
+                          <span className="font-medium">{comment.user}</span>
+                          {' - '}
+                          <span className="text-gray-600">{comment.time}</span>
+                          {comment.text && (
+                            <p className="text-gray-800 mt-1">{comment.text}</p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               )}
             </div>
@@ -255,7 +220,7 @@ const App = () => {
                     height={300}
                     data={[{
                       name: 'Engagement',
-                      Ventes: profileData.ventes,
+                      Évaluations: profileData.ventes || 0,
                       Abonnés: profileData.abonnes || 0,
                       Abonnements: profileData.abonnements || 0
                     }]}
@@ -266,7 +231,7 @@ const App = () => {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="Ventes" fill="#3B82F6" />
+                    <Bar dataKey="Évaluations" fill="#3B82F6" />
                     <Bar dataKey="Abonnés" fill="#10B981" />
                     <Bar dataKey="Abonnements" fill="#6366F1" />
                   </BarChart>
