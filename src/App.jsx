@@ -18,47 +18,139 @@ const App = () => {
 
   const parseVintedProfile = (text) => {
     try {
-      const profileRegex = {
-        boutique: /Nom de la boutique\s*:\s*([^\n]+)/i,
-        ventes: /Vente\s*:\s*(\d+)/i,
-        abonnes: /Abonn[ée]e?\s*:\s*(\d+)/i,
-        abonnements: /Abonnement\s*:\s*(\d+)/i,
-        lieu: /Lieu\s*:\s*([^\n]+)/i,
-        note: /Note\s*:\s*([\d.]+)/i
-      };
-
       const data = {};
-      for (const [key, regex] of Object.entries(profileRegex)) {
-        const match = text.match(regex);
+      
+      // Recherche du nom de la boutique
+      // On cherche dans plusieurs formats possibles
+      const boutiquePatterns = [
+        /membre depuis[^@]+@([^"\s]+)/i,
+        /profil de ([^"\s]+)/i,
+        /boutique de ([^"\s]+)/i
+      ];
+      
+      for (const pattern of boutiquePatterns) {
+        const match = text.match(pattern);
         if (match) {
-          data[key] = key === 'note' || key === 'ventes' || key === 'abonnes' || key === 'abonnements' 
-            ? Number(match[1]) 
-            : match[1].trim();
+          data.boutique = match[1].trim();
+          break;
         }
       }
 
-      // Extraire les commentaires
-      const commentsRegex = /([^\n]+) il y a ([^\n]+)/g;
-      const comments = [];
-      let match;
-      while ((match = commentsRegex.exec(text)) !== null) {
-        comments.push({
-          user: match[1],
-          time: match[2]
-        });
+      // Recherche du nombre de ventes
+      // Cherche les chiffres près des mots associés aux ventes
+      const ventesPatterns = [
+        /(\d+)\s*articles?\s*vendus?/i,
+        /(\d+)\s*ventes?/i,
+        /vendu\s*:\s*(\d+)/i
+      ];
+      
+      for (const pattern of ventesPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          data.ventes = parseInt(match[1]);
+          break;
+        }
       }
+
+      // Recherche des abonnés
+      const abonnesPatterns = [
+        /(\d+)\s*abonn[ée]s?/i,
+        /followers?[^\d]*(\d+)/i
+      ];
+      
+      for (const pattern of abonnesPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          data.abonnes = parseInt(match[1]);
+          break;
+        }
+      }
+
+      // Recherche des abonnements
+      const abonnementsPatterns = [
+        /(\d+)\s*abonnements?/i,
+        /following[^\d]*(\d+)/i
+      ];
+      
+      for (const pattern of abonnementsPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          data.abonnements = parseInt(match[1]);
+          break;
+        }
+      }
+
+      // Recherche de la localisation
+      const lieuPatterns = [
+        /localis[ée] à ([^,\n]+)/i,
+        /lieu\s*:\s*([^,\n]+)/i,
+        /ville\s*:\s*([^,\n]+)/i
+      ];
+      
+      for (const pattern of lieuPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          data.lieu = match[1].trim();
+          break;
+        }
+      }
+
+      // Recherche de la note
+      const notePatterns = [
+        /(\d[.,]\d+)\s*\/\s*5/i,
+        /note\s*:\s*(\d[.,]\d+)/i,
+        /évaluation[^\d]*(\d[.,]\d+)/i
+      ];
+      
+      for (const pattern of notePatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          data.note = parseFloat(match[1].replace(',', '.'));
+          break;
+        }
+      }
+
+      // Extraction des commentaires
+      const comments = [];
+      const commentLines = text.split('\n');
+      
+      commentLines.forEach(line => {
+        // Cherche les patterns de commentaires typiques
+        const commentPatterns = [
+          /([^\s]+)\s+il y a ([^\n:]+)[:\s]+(.+)/i,
+          /([^\s]+)\s+([^:]+)\s*:\s*(.+)/i
+        ];
+
+        for (const pattern of commentPatterns) {
+          const match = line.match(pattern);
+          if (match) {
+            comments.push({
+              user: match[1],
+              time: match[2],
+              text: match[3]?.trim() || ''
+            });
+            break;
+          }
+        }
+      });
+
       data.comments = comments;
+
+      // Vérification des données minimales requises
+      if (!data.boutique || !data.ventes) {
+        throw new Error('Impossible de trouver les informations essentielles du profil');
+      }
 
       return data;
     } catch (err) {
-      throw new Error('Erreur lors de l\'analyse du profil');
+      throw new Error('Erreur lors de l\'analyse du profil. Assurez-vous d\'avoir copié tout le contenu de la page du profil Vinted.');
     }
   };
 
   const handleAnalyze = () => {
     try {
       if (!inputText.trim()) {
-        setError('Veuillez coller le texte du profil Vinted');
+        setError('Veuillez coller le contenu de la page du profil Vinted');
         return;
       }
 
@@ -84,9 +176,19 @@ const App = () => {
         </div>
 
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+          <div className="mb-4 text-sm text-gray-600">
+            <p>Comment utiliser Vintalyze :</p>
+            <ol className="list-decimal pl-5 mt-2 space-y-1">
+              <li>Allez sur le profil Vinted que vous souhaitez analyser</li>
+              <li>Sélectionnez tout le contenu de la page (Ctrl+A)</li>
+              <li>Copiez le contenu (Ctrl+C)</li>
+              <li>Collez-le ci-dessous (Ctrl+V)</li>
+            </ol>
+          </div>
+          
           <textarea
             className="w-full h-32 p-4 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Collez ici le contenu copié depuis le profil Vinted..."
+            placeholder="Collez ici le contenu copié depuis la page du profil Vinted..."
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
           />
@@ -113,52 +215,62 @@ const App = () => {
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="font-bold mb-2">Informations générales</h3>
                 <ul className="space-y-2">
-                  <li>Boutique: {profileData.boutique}</li>
-                  <li>Ventes: {profileData.ventes}</li>
-                  <li>Abonnés: {profileData.abonnes}</li>
-                  <li>Abonnements: {profileData.abonnements}</li>
-                  <li>Lieu: {profileData.lieu}</li>
-                  <li>Note: {profileData.note}/5</li>
+                  <li><span className="font-medium">Boutique:</span> {profileData.boutique}</li>
+                  <li><span className="font-medium">Ventes:</span> {profileData.ventes}</li>
+                  {profileData.abonnes && <li><span className="font-medium">Abonnés:</span> {profileData.abonnes}</li>}
+                  {profileData.abonnements && <li><span className="font-medium">Abonnements:</span> {profileData.abonnements}</li>}
+                  {profileData.lieu && <li><span className="font-medium">Lieu:</span> {profileData.lieu}</li>}
+                  {profileData.note && <li><span className="font-medium">Note:</span> {profileData.note}/5</li>}
                 </ul>
               </div>
 
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-bold mb-2">Derniers commentaires</h3>
-                <ul className="space-y-2">
-                  {profileData.comments.map((comment, index) => (
-                    <li key={index}>
-                      <span className="font-medium">{comment.user}</span>
-                      {' - '}
-                      <span className="text-gray-600">{comment.time}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {profileData.comments && profileData.comments.length > 0 && (
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-bold mb-2">Derniers commentaires</h3>
+                  <ul className="space-y-2">
+                    {profileData.comments.map((comment, index) => (
+                      <li key={index}>
+                        <span className="font-medium">{comment.user}</span>
+                        {' - '}
+                        <span className="text-gray-600">{comment.time}</span>
+                        {comment.text && (
+                          <>
+                            {' : '}
+                            <span className="text-gray-800">{comment.text}</span>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             <div className="space-y-8">
               <div>
                 <h3 className="text-xl font-bold mb-4">Statistiques</h3>
-                <BarChart
-                  width={600}
-                  height={300}
-                  data={[{
-                    name: 'Engagement',
-                    Ventes: profileData.ventes,
-                    Abonnés: profileData.abonnes,
-                    Abonnements: profileData.abonnements
-                  }]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="Ventes" fill="#3B82F6" />
-                  <Bar dataKey="Abonnés" fill="#10B981" />
-                  <Bar dataKey="Abonnements" fill="#6366F1" />
-                </BarChart>
+                <div className="overflow-x-auto">
+                  <BarChart
+                    width={600}
+                    height={300}
+                    data={[{
+                      name: 'Engagement',
+                      Ventes: profileData.ventes,
+                      Abonnés: profileData.abonnes || 0,
+                      Abonnements: profileData.abonnements || 0
+                    }]}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="Ventes" fill="#3B82F6" />
+                    <Bar dataKey="Abonnés" fill="#10B981" />
+                    <Bar dataKey="Abonnements" fill="#6366F1" />
+                  </BarChart>
+                </div>
               </div>
             </div>
           </div>
