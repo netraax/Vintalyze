@@ -18,6 +18,96 @@ import {
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
+// Au début du fichier, après les imports
+const countryKeywords = {
+  'France': [
+    'merci', 'parfait', 'super', 'très', 'bien', 'reçu', 'conforme', 'colis',
+    'envoi', 'rapide', 'bonne', 'vraiment', 'nickel', 'impeccable', 'génial',
+    'recommande', 'excellent', 'top', 'communication', 'ras'
+  ],
+  'Espagne': [
+    'gracias', 'perfecto', 'muy', 'bien', 'genial', 'todo', 'muchas', 
+    'excelente', 'bueno', 'vendedor', 'envío', 'rápido', 'recomiendo',
+    'recomendable', 'correcto', 'perfecto', 'encantado'
+  ],
+  'Italie': [
+    'grazie', 'perfetto', 'tutto', 'molto', 'bene', 'ottimo', 'bellissimo',
+    'venditore', 'spedizione', 'veloce', 'arrivato', 'consiglio', 'consigliato',
+    'gentile', 'cordiale', 'disponibile', 'pazzesco', 'fantastico', 'preciso'
+  ],
+  'Allemagne': [
+    'danke', 'sehr', 'gut', 'alles', 'freundlich', 'bestens', 'grüße',
+    'zuverlässig', 'deutschland'
+  ],
+  'International': [
+    'thank', 'perfect', 'good', 'great', 'nice', 'very', 'received',
+    'seller', 'shipping', 'thanks', 'fast', 'awesome', 'amazing', 'recommended'
+  ]
+};
+
+const parseVintedProfile = (text) => {
+  try {
+    const data = {};
+    
+    // [Code existant pour l'extraction des données de base]
+
+    // Analyse des ventes par pays
+    const salesByCountry = {
+      'France': 0,
+      'Espagne': 0,
+      'Italie': 0,
+      'Allemagne': 0,
+      'International': 0
+    };
+
+    const lines = text.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.includes('il y a') && !line.includes('Vinted')) {
+        const nextLine = lines[i + 1]?.trim() || '';
+        
+        // Ignorer les lignes "Traduire" et les réponses du vendeur
+        if (nextLine && nextLine !== 'Traduire' && !nextLine.startsWith('**') && 
+            !nextLine.startsWith('aimanjackets')) {
+          const text = nextLine.toLowerCase();
+          let maxScore = 0;
+          let detectedCountry = 'International';
+
+          Object.entries(countryKeywords).forEach(([country, keywords]) => {
+            const score = keywords.filter(word => text.includes(word)).length;
+            if (score > maxScore) {
+              maxScore = score;
+              detectedCountry = country;
+            }
+          });
+
+          // N'ajouter que si on a détecté au moins un mot-clé
+          if (maxScore > 0) {
+            salesByCountry[detectedCountry]++;
+            console.log(`Commentaire détecté pour ${detectedCountry}:`, text);
+          }
+        }
+      }
+    }
+
+    // Ajouter les données de répartition géographique
+    data.salesByCountry = Object.entries(salesByCountry)
+      .filter(([_, count]) => count > 0)
+      .map(([country, count]) => ({
+        name: country,
+        value: count,
+        percentage: ((count / data.nombreEvaluations) * 100).toFixed(1)
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    return data;
+  } catch (err) {
+    console.error('Erreur de parsing:', err);
+    throw new Error('Erreur lors de l\'analyse du profil.');
+  }
+};
+
 // Nouvelle fonction de détection de langue avec linguist.js
 const analyzeCommentsByCountry = (comments) => {
   // Initialiser les compteurs par pays
