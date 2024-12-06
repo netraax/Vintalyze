@@ -18,6 +18,7 @@ import {
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getDateRange, generateDatePeriod, convertRelativeDateToAbsolute } from './utils/dateUtils';
+import AnalysisForm from './components/AnalysisForm';
 // Nouvelle fonction de détection de langue avec linguist.js
 const detectLanguage = (text) => {
   try {
