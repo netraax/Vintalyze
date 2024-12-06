@@ -528,6 +528,21 @@ const App = () => {
       head: [['Métrique', 'Valeur']],
       body: info
     });
+    {profileData.salesByCountry && profileData.salesByCountry.length > 0 && (
+  <div className="bg-gray-50 p-4 rounded-lg">
+    <h3 className="font-bold mb-2">Répartition géographique des ventes</h3>
+    <div className="space-y-2">
+      {profileData.salesByCountry.map((item, index) => (
+        <div key={index} className="flex justify-between items-center">
+          <span>{item.name}</span>
+          <span className="font-medium">
+            {item.value} ventes ({item.percentage}%)
+          </span>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
     // Statistiques de performance
     if (profileData.performanceStats) {
