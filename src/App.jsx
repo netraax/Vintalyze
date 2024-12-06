@@ -9,6 +9,9 @@ import {
   Legend,
   LineChart,
   Line,
+  PieChart,
+  Pie,
+  Cell,
   RadialBarChart,
   RadialBar,
   PolarGrid,
@@ -17,22 +20,27 @@ import {
 } from 'recharts';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { getDateRange, generateDatePeriod, convertRelativeDateToAbsolute } from '/src/utils/dateUtils';
+
+// Couleurs pour les graphiques
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
 // Nouvelle fonction de détection de langue avec linguist.js
-const detectLanguage = (text) => {
+const detectMainLanguage = (text) => {
   try {
-    const result = window.linguist.detect(text);
+    // franc retourne directement le code de la langue
+    const detectedLanguage = window.franc(text);
     
     const languageToCountry = {
-      'fr': 'France',
-      'es': 'Espagne',
-      'it': 'Italie',
-      'en': 'International',
-      'nl': 'Pays-Bas',
-      'de': 'Allemagne'
+      'fra': 'France',
+      'spa': 'Espagne',
+      'ita': 'Italie',
+      'eng': 'International',
+      'nld': 'Pays-Bas',
+      'deu': 'Allemagne',
+      'und': 'International' // 'und' est retourné quand franc ne peut pas détecter la langue
     };
 
-    const detectedLanguage = result.language;
     return languageToCountry[detectedLanguage] || 'International';
   } catch (error) {
     console.error('Erreur de détection de langue:', error);
@@ -40,30 +48,6 @@ const detectLanguage = (text) => {
   }
 };
 
-// Fonction utilitaire pour obtenir l'intervalle de dates
-const getDateRange = (dates) => {
-  if (dates.length === 0) return { start: new Date(), end: new Date() };
-  const sortedDates = dates.sort((a, b) => new Date(a) - new Date(b));
-  return {
-    start: new Date(sortedDates[0]),
-    end: new Date(sortedDates[sortedDates.length - 1])
-  };
-};
-
-// Fonction pour générer la période adaptative
-const generateDatePeriod = (startDate, endDate) => {
-  const dates = {};
-  const current = new Date(startDate);
-  const end = new Date(endDate);
-
-  while (current <= end) {
-    const monthKey = current.toISOString().slice(0, 7);
-    dates[monthKey] = 0;
-    current.setMonth(current.getMonth() + 1);
-  }
-
-  return dates;
-};
 const App = () => {
   const [inputText, setInputText] = useState('');
   const [profileData, setProfileData] = useState(null);
@@ -71,7 +55,6 @@ const App = () => {
   const [secondProfileText, setSecondProfileText] = useState('');
   const [secondProfileData, setSecondProfileData] = useState(null);
   const [showComparison, setShowComparison] = useState(false);
-
   // Calcul du score de performance (0-100)
   const calculatePerformanceScore = (data) => {
     if (!data) return 0;
@@ -148,43 +131,6 @@ const App = () => {
       prediction: prediction
     };
   };
-  const convertRelativeDateToAbsolute = (relativeDate) => {
-    const now = new Date();
-    const parts = relativeDate.toLowerCase().match(/(\d+)\s+(minute|heure|jour|semaine|mois|an|années|ans)/);
-    
-    if (!parts) return null;
-    
-    const amount = parseInt(parts[1]);
-    const unit = parts[2];
-    
-    let date = new Date(now);
-    
-    switch (unit) {
-      case 'minute':
-        date.setMinutes(date.getMinutes() - amount);
-        break;
-      case 'heure':
-        date.setHours(date.getHours() - amount);
-        break;
-      case 'jour':
-        date.setDate(date.getDate() - amount);
-        break;
-      case 'semaine':
-        date.setDate(date.getDate() - (amount * 7));
-        break;
-      case 'mois':
-        date.setMonth(date.getMonth() - amount);
-        break;
-      case 'an':
-      case 'ans':
-      case 'années':
-        date.setFullYear(date.getFullYear() - amount);
-        break;
-    }
-    
-    return date;
-  };
-
   const parseVintedProfile = (text) => {
     try {
       const data = {};
@@ -228,20 +174,36 @@ const App = () => {
         data.ventesMinEstimees = Math.floor(data.nombreEvaluations * 0.9);
       }
 
-      // Analyse temporelle adaptative des ventes
+      // Analyse temporelle et linguistique des ventes
+      const salesByMonth = {};
+      const salesByCountry = {
+        'France': 0,
+        'Espagne': 0,
+        'Italie': 0,
+        'International': 0,
+        'Pays-Bas': 0,
+        'Allemagne': 0
+      };
+
       const commentDates = [];
       const lines = text.split('\n');
-      const salesByMonth = {};
       
-      // Collecte des dates
+      // Collecte des dates et analyse des langues
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (line.includes('il y a')) {
+        const nextLine = lines[i + 1]?.trim() || '';
+        
+        if (line.includes('il y a') && !line.includes('Vinted')) {
           const timeMatch = line.match(/il y a ([^*\n]+)/i);
-          if (timeMatch && !line.includes('Vinted')) {
+          if (timeMatch && !nextLine.startsWith('**')) {
+            // Analyse de la date
             const absoluteDate = convertRelativeDateToAbsolute(timeMatch[1]);
             if (absoluteDate) {
               commentDates.push(absoluteDate);
+
+              // Détection de la langue et comptage des ventes par pays
+              const country = detectMainLanguage(nextLine);
+              salesByCountry[country]++;
             }
           }
         }
@@ -261,7 +223,7 @@ const App = () => {
         });
       }
 
-      // Convertir en format pour le graphique
+      // Convertir en format pour le graphique timeline
       data.salesTimeline = Object.entries(salesByMonth)
         .map(([date, count]) => ({
           date: date,
@@ -270,9 +232,23 @@ const App = () => {
         }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-      // Analyses supplémentaires
+      // Convertir les ventes par pays en format pour le graphique
+      data.salesByCountry = Object.entries(salesByCountry)
+        .filter(([_, count]) => count > 0)
+        .map(([country, count]) => ({
+          name: country,
+          value: count,
+          percentage: ((count / commentDates.length) * 100).toFixed(1)
+        }))
+        .sort((a, b) => b.value - a.value);
+
+      // Calcul du taux d'engagement
       data.engagementRate = data.abonnes ? (data.ventesEstimees / data.abonnes * 100).toFixed(1) : 0;
+      
+      // Calcul du score de performance
       data.performanceScore = calculatePerformanceScore(data);
+      
+      // Calcul des statistiques de performance
       data.performanceStats = calculatePerformanceStats(data);
 
       if (!data.boutique) {
@@ -324,22 +300,20 @@ const App = () => {
       body: info
     });
 
-    // Statistiques de performance
-    if (profileData.performanceStats) {
+    // Répartition géographique
+    if (profileData.salesByCountry && profileData.salesByCountry.length > 0) {
       doc.setFontSize(16);
-      doc.text('Statistiques de performance', 20, doc.lastAutoTable.finalY + 20);
+      doc.text('Répartition géographique des ventes', 20, doc.lastAutoTable.finalY + 20);
 
-      const perfStats = [
-        ['Ventes moyennes par mois', profileData.performanceStats.avgSalesPerMonth.toString()],
-        ['Meilleur mois', `${profileData.performanceStats.bestMonth.mois} (${profileData.performanceStats.bestMonth.ventes} ventes)`],
-        ['Tendance', profileData.performanceStats.trend],
-        ['Prévision mois prochain', profileData.performanceStats.prediction.toString()]
-      ];
-
+      const salesData = profileData.salesByCountry.map(item => [
+        item.name,
+        `${item.value} ventes (${item.percentage}%)`
+      ]);
+      
       doc.autoTable({
         startY: doc.lastAutoTable.finalY + 25,
-        head: [['Métrique', 'Valeur']],
-        body: perfStats
+        head: [['Pays', 'Ventes (pourcentage)']],
+        body: salesData
       });
     }
 
@@ -355,7 +329,7 @@ const App = () => {
       
       doc.autoTable({
         startY: doc.lastAutoTable.finalY + 25,
-        head: [['Période', 'Nombre de ventes']],
+        head: [['Période', 'Ventes']],
         body: salesData
       });
     }
@@ -396,92 +370,6 @@ const App = () => {
     }
   };
 
-  // JSX pour le rendu de la comparaison
-  const renderComparison = () => {
-    if (!profileData || !secondProfileData) return null;
-
-    // Créer une plage de dates communes pour les deux profils
-    const allDates = [
-      ...profileData.salesTimeline.map(item => item.date),
-      ...secondProfileData.salesTimeline.map(item => item.date)
-    ];
-    const { start, end } = getDateRange(allDates);
-    const commonPeriod = generateDatePeriod(start, end);
-
-    // Remplir les données pour chaque profil
-    const mergedData = Object.keys(commonPeriod).map(monthKey => {
-      const firstProfileSale = profileData.salesTimeline.find(item => item.date === monthKey)?.ventes || 0;
-      const secondProfileSale = secondProfileData.salesTimeline.find(item => item.date === monthKey)?.ventes || 0;
-      return {
-        date: monthKey,
-        mois: new Date(monthKey).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }),
-        [profileData.boutique]: firstProfileSale,
-        [secondProfileData.boutique]: secondProfileSale
-      };
-    });
-
-    return (
-      <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-bold mb-4">Comparaison des profils</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="font-bold mb-2">{profileData.boutique}</h3>
-            <ul className="space-y-2">
-              <li>Ventes: {profileData.ventesEstimees}</li>
-              <li>Taux d'engagement: {profileData.engagementRate}%</li>
-              <li>Score de performance: {profileData.performanceScore.total}/100</li>
-              <li>Note: {profileData.note}/5</li>
-            </ul>
-          </div>
-          
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="font-bold mb-2">{secondProfileData.boutique}</h3>
-            <ul className="space-y-2">
-              <li>Ventes: {secondProfileData.ventesEstimees}</li>
-              <li>Taux d'engagement: {secondProfileData.engagementRate}%</li>
-              <li>Score de performance: {secondProfileData.performanceScore.total}/100</li>
-              <li>Note: {secondProfileData.note}/5</li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <h3 className="text-xl font-bold mb-4">Comparaison des ventes</h3>
-          <LineChart
-            width={800}
-            height={300}
-            data={mergedData}
-            margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis 
-              dataKey="mois" 
-              angle={-45}
-              textAnchor="end"
-              height={60}
-            />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line 
-              type="monotone" 
-              dataKey={profileData.boutique}
-              stroke="#3B82F6" 
-              strokeWidth={2}
-            />
-            <Line 
-              type="monotone" 
-              dataKey={secondProfileData.boutique}
-              stroke="#10B981" 
-              strokeWidth={2}
-            />
-          </LineChart>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -495,15 +383,15 @@ const App = () => {
         </div>
 
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-      <div className="mb-4 text-sm text-gray-600">
-        <p>Comment utiliser Vintalyze :</p>
-        <ol className="list-decimal pl-5 mt-2 space-y-1">
-          <li>Allez sur le profil Vinted que vous souhaitez analyser</li>
-          <li>Sélectionnez tout le contenu de la page (Ctrl+A)</li>
-          <li>Copiez le contenu (Ctrl+C)</li>
-          <li>Collez-le ci-dessous (Ctrl+V)</li>
-        </ol>
-      </div>
+          <div className="mb-4 text-sm text-gray-600">
+            <p>Comment utiliser Vintalyze :</p>
+            <ol className="list-decimal pl-5 mt-2 space-y-1">
+              <li>Allez sur le profil Vinted que vous souhaitez analyser</li>
+              <li>Sélectionnez tout le contenu de la page (Ctrl+A)</li>
+              <li>Copiez le contenu (Ctrl+C)</li>
+              <li>Collez-le ci-dessous (Ctrl+V)</li>
+            </ol>
+          </div>
           
           <textarea
             className="w-full h-48 p-4 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -555,83 +443,106 @@ const App = () => {
                 </ul>
               </div>
 
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-bold mb-2">Score de performance</h3>
-                <div className="mb-4">
-                  <div className="text-3xl font-bold text-blue-600">
-                    {profileData.performanceScore.total}/100
+              {/* Nouvelle section pour la répartition géographique */}
+              {profileData.salesByCountry && profileData.salesByCountry.length > 0 && (
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-bold mb-2">Répartition géographique des ventes</h3>
+                  <div className="space-y-2">
+                    {profileData.salesByCountry.map((item, index) => (
+                      <div key={index} className="flex justify-between items-center">
+                        <span>{item.name}</span>
+                        <span className="font-medium">
+                          {item.value} ventes ({item.percentage}%)
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <ul className="space-y-2">
-                  <li>
-                    <span className="font-medium">Note:</span> {profileData.performanceScore.details.rating}/100
-                  </li>
-                  <li>
-                    <span className="font-medium">Ventes:</span> {profileData.performanceScore.details.sales}/100
-                  </li>
-                  <li>
-                    <span className="font-medium">Engagement:</span> {profileData.performanceScore.details.engagement}/100
-                  </li>
-                  <li>
-                    <span className="font-medium">Régularité:</span> {profileData.performanceScore.details.consistency}/100
-                  </li>
-                </ul>
-              </div>
+              )}
             </div>
-
-            {profileData.performanceStats && (
-              <div className="mb-8">
-                <h3 className="text-xl font-bold mb-4">Analyse des performances</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">Ventes moyennes par mois</div>
-                    <div className="text-2xl font-bold">{profileData.performanceStats.avgSalesPerMonth}</div>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">Meilleur mois</div>
-                    <div className="text-2xl font-bold">{profileData.performanceStats.bestMonth.ventes}</div>
-                    <div className="text-sm text-gray-500">{profileData.performanceStats.bestMonth.mois}</div>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">Tendance</div>
-                    <div className="text-2xl font-bold">{profileData.performanceStats.trend}</div>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">Prévision mois prochain</div>
-                    <div className="text-2xl font-bold">{profileData.performanceStats.prediction}</div>
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="space-y-8">
               <div>
-                <h3 className="text-xl font-bold mb-4">Évolution des ventes</h3>
-                <div className="bg-gray-50 p-4 rounded-lg overflow-x-auto">
-                  <LineChart
-                    width={800}
-                    height={300}
-                    data={profileData.salesTimeline}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="mois" 
-                      angle={-45}
-                      textAnchor="end"
-                      height={60}
-                    />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Line 
-                      type="monotone" 
-                      dataKey="ventes" 
-                      stroke="#3B82F6" 
-                      name="Ventes"
-                      strokeWidth={2}
-                    />
-                  </LineChart>
+                <h3 className="text-xl font-bold mb-4">Statistiques</h3>
+                <div className="overflow-x-auto">
+                  {/* Graphique des statistiques générales */}
+                  <div className="mb-8">
+                    <BarChart
+                      width={600}
+                      height={300}
+                      data={[{
+                        name: 'Engagement',
+                        'Ventes estimées': profileData.ventesEstimees,
+                        'Ventes min.': profileData.ventesMinEstimees,
+                        Abonnés: profileData.abonnes || 0,
+                        Abonnements: profileData.abonnements
+                      }]}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="Ventes estimées" fill="#3B82F6" />
+                      <Bar dataKey="Ventes min." fill="#93C5FD" />
+                      <Bar dataKey="Abonnés" fill="#10B981" />
+                      <Bar dataKey="Abonnements" fill="#6366F1" />
+                    </BarChart>
+                  </div>
+
+                  {/* Graphique de répartition géographique */}
+                  {profileData.salesByCountry && profileData.salesByCountry.length > 0 && (
+                    <div className="mb-8">
+                      <h4 className="text-lg font-medium mb-4">Répartition des ventes par pays</h4>
+                      <PieChart width={600} height={300}>
+                        <Pie
+                          data={profileData.salesByCountry}
+                          cx={300}
+                          cy={150}
+                          labelLine={false}
+                          label={({ name, percentage }) => `${name} (${percentage}%)`}
+                          outerRadius={120}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {profileData.salesByCountry.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </div>
+                  )}
+
+                  {/* Graphique d'évolution des ventes */}
+                  <div>
+                    <h4 className="text-lg font-medium mb-4">Évolution des ventes</h4>
+                    <LineChart
+                      width={800}
+                      height={300}
+                      data={profileData.salesTimeline}
+                      margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        dataKey="mois" 
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line 
+                        type="monotone" 
+                        dataKey="ventes" 
+                        stroke="#3B82F6" 
+                        name="Ventes"
+                        strokeWidth={2}
+                      />
+                    </LineChart>
+                  </div>
                 </div>
               </div>
             </div>
@@ -653,7 +564,66 @@ const App = () => {
                   Comparer les profils
                 </button>
               </div>
-            ) : renderComparison()}
+            ) : (
+              <div className="mt-8">
+                <h3 className="text-xl font-bold mb-4">Comparaison des profils</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-bold mb-2">{profileData.boutique}</h4>
+                    <ul className="space-y-2">
+                      <li>Ventes: {profileData.ventesEstimees}</li>
+                      <li>Taux d'engagement: {profileData.engagementRate}%</li>
+                      <li>Score de performance: {profileData.performanceScore.total}/100</li>
+                      <li>Note: {profileData.note}/5</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-bold mb-2">{secondProfileData.boutique}</h4>
+                    <ul className="space-y-2">
+                      <li>Ventes: {secondProfileData.ventesEstimees}</li>
+                      <li>Taux d'engagement: {secondProfileData.engagementRate}%</li>
+                      <li>Score de performance: {secondProfileData.performanceScore.total}/100</li>
+                      <li>Note: {secondProfileData.note}/5</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <h4 className="text-lg font-bold mb-4">Comparaison des ventes</h4>
+                  <LineChart
+                    width={800}
+                    height={300}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="mois" 
+                      angle={-45}
+                      textAnchor="end"
+                      height={60}
+                    />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey={profileData.boutique}
+                      data={profileData.salesTimeline}
+                      stroke="#3B82F6" 
+                      strokeWidth={2}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey={secondProfileData.boutique}
+                      data={secondProfileData.salesTimeline}
+                      stroke="#10B981" 
+                      strokeWidth={2}
+                    />
+                  </LineChart>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-4 mt-8">
               <button
