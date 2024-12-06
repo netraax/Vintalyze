@@ -495,16 +495,12 @@ const App = () => {
           </p>
         </div>
 
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <div className="mb-4 text-sm text-gray-600">
-            <p>Comment utiliser Vintalyze :</p>
-            <ol className="list-decimal pl-5 mt-2 space-y-1">
-              <li>Allez sur le profil Vinted que vous souhaitez analyser</li>
-              <li>Sélectionnez tout le contenu de la page (Ctrl+A)</li>
-              <li>Copiez le contenu (Ctrl+C)</li>
-              <li>Collez-le ci-dessous (Ctrl+V)</li>
-            </ol>
-          </div>
+        <AnalysisForm 
+  inputText={inputText}
+  setInputText={setInputText}
+  error={error}
+  handleAnalyze={handleAnalyze}
+/>
           
           <textarea
             className="w-full h-48 p-4 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
