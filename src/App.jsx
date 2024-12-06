@@ -332,7 +332,50 @@ const App = () => {
           }
         });
       }
+      
+// Analyse des ventes par pays
+      const salesByCountry = {
+        'France': 0,
+        'Espagne': 0,
+        'Italie': 0,
+        'International': 0
+      };
 
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        const nextLine = lines[i + 1]?.trim() || '';
+        
+        if (line.includes('il y a') && !line.includes('Vinted')) {
+          if (nextLine && !nextLine.startsWith('**')) {
+            // Détecter la langue du commentaire
+            const text = nextLine.toLowerCase();
+            let maxScore = 0;
+            let detectedCountry = 'International';
+
+            Object.entries(countryKeywords).forEach(([country, keywords]) => {
+              const score = keywords.filter(word => text.includes(word)).length;
+              if (score > maxScore) {
+                maxScore = score;
+                detectedCountry = country;
+              }
+            });
+
+            // Incrémenter le compteur pour ce pays
+            salesByCountry[detectedCountry]++;
+          }
+        }
+      }
+
+      // Ajouter les données de répartition géographique
+      data.salesByCountry = Object.entries(salesByCountry)
+        .filter(([_, count]) => count > 0)
+        .map(([country, count]) => ({
+          name: country,
+          value: count,
+          percentage: ((count / data.nombreEvaluations) * 100).toFixed(1)
+        }))
+        .sort((a, b) => b.value - a.value);
+      
       // Convertir en format pour le graphique
       data.salesTimeline = Object.entries(salesByMonth)
         .map(([date, count]) => ({
