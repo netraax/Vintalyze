@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+
 // Nouvelle fonction de détection de langue avec linguist.js
 const detectLanguage = (text) => {
   try {
