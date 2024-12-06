@@ -19,68 +19,98 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
 // Nouvelle fonction de détection de langue avec linguist.js
-// Mot-clés pour chaque langue
-const patterns = {
-  'fr': ['merci', 'parfait', 'super', 'très', 'reçu', 'conforme'],
-  'es': ['gracias', 'perfecto', 'muy', 'bien', 'genial'],
-  'it': ['grazie', 'perfetto', 'ottimo', 'bene', 'molto'],
-  'en': ['thank', 'perfect', 'good', 'great', 'received'],
-  'de': ['danke', 'perfekt', 'gut', 'sehr', 'super'],
-  'pt': ['obrigado', 'perfeito', 'muito', 'bom', 'ótimo']
+const analyzeCommentsByCountry = (comments) => {
+  // Initialiser les compteurs par pays
+  const salesByCountry = {
+    'France': 0,
+    'Espagne': 0,
+    'Italie': 0,
+    'International': 0
+  };
+
+  // Mots-clés par pays
+ const countryKeywords = {
+  'France': [
+    // Remerciements et politesse
+    'merci', 'svp', 'bonjour', 'bonsoir', 'au top', 'nickel', 
+    // Qualités positives
+    'parfait', 'super', 'très', 'bien', 'génial', 'excellent', 'impeccable', 'formidable',
+    // Transaction et livraison
+    'reçu', 'conforme', 'colis', 'envoi', 'rapide', 'livraison', 'emballage', 'commande',
+    // Satisfaction
+    'content', 'satisfait', 'ravie', 'recommande', 'qualité', 'communication',
+    // Adjectifs courants
+    'beau', 'belle', 'bon', 'bonne', 'agréable', 'magnifique', 'sympa',
+    // Expressions
+    'correspond', 'comme prévu', 'encore merci', 'à bientôt'
+  ],
+  
+  'Espagne': [
+    // Remerciements et politesse
+    'gracias', 'por favor', 'hola', 'buenos', 'encantada',
+    // Qualités positives
+    'perfecto', 'muy', 'bien', 'genial', 'excelente', 'bueno', 'buena', 'estupendo',
+    // Transaction et livraison
+    'vendedor', 'envío', 'paquete', 'recibido', 'rápido', 'llegó', 'entrega',
+    // Satisfaction
+    'contenta', 'satisfecha', 'recomiendo', 'calidad', 'comunicación',
+    // Adjectifs courants
+    'bonito', 'bonita', 'hermoso', 'hermosa', 'precioso', 'preciosa', 'magnífico',
+    // Expressions
+    'todo correcto', 'como esperaba', 'muchas gracias', 'hasta pronto'
+  ],
+
+  'Italie': [
+    // Remerciements et politesse
+    'grazie', 'prego', 'ciao', 'salve', 'gentile',
+    // Qualités positives
+    'perfetto', 'ottimo', 'bene', 'molto', 'bellissimo', 'eccellente', 'fantastico',
+    // Transaction et livraison
+    'venditore', 'spedizione', 'pacco', 'ricevuto', 'veloce', 'consegna', 'arrivato',
+    // Satisfaction
+    'contento', 'contenta', 'soddisfatto', 'soddisfatta', 'consiglio', 'qualità',
+    // Adjectifs courants
+    'bello', 'bella', 'buono', 'buona', 'magnifico', 'stupendo', 'eccezionale',
+    // Expressions
+    'come previsto', 'tutto perfetto', 'mille grazie', 'alla prossima'
+  ],
+
+  'International': [
+    // Remerciements et politesse
+    'thank', 'thanks', 'please', 'hello', 'hi', 'hey',
+    // Qualités positives
+    'perfect', 'good', 'great', 'excellent', 'awesome', 'amazing', 'wonderful',
+    // Transaction et livraison
+    'received', 'shipping', 'delivery', 'package', 'fast', 'quick', 'seller',
+    // Satisfaction
+    'satisfied', 'happy', 'recommend', 'quality', 'communication',
+    // Adjectifs courants
+    'nice', 'beautiful', 'lovely', 'fantastic', 'smooth', 'pleasant',
+    // Expressions
+    'as described', 'well packed', 'many thanks', 'will buy again'
+  ]
 };
 
-// Comptabiliser les ventes par langue
-let salesByLanguage = {
-  fr: 0,
-  es: 0,
-  it: 0,
-  en: 0,
-  de: 0,
-  pt: 0,
-  other: 0, // Pour les ventes non détectées ou internationales
+  comments.forEach(comment => {
+    const text = comment.toLowerCase();
+    let detected = 'International';
+    let maxScore = 0;
+
+    // Détecter le pays avec le plus de mots-clés correspondants
+    Object.entries(countryKeywords).forEach(([country, keywords]) => {
+      const score = keywords.filter(word => text.includes(word)).length;
+      if (score > maxScore) {
+        maxScore = score;
+        detected = country;
+      }
+    });
+
+    // Incrémenter le compteur pour ce pays
+    salesByCountry[detected]++;
+  });
+
+  return salesByCountry;
 };
-
-// Fonction pour détecter la langue d'un commentaire
-const detectLanguageByKeywords = (text) => {
-  text = text.toLowerCase();  // Convertir en minuscule pour comparaison
-
-  // Compter les mots-clés trouvés pour chaque langue
-  const scores = {};
-  for (const [lang, keywords] of Object.entries(patterns)) {
-    scores[lang] = keywords.filter(word => text.includes(word)).length;
-  }
-
-  // Retourner la langue avec le plus de mots-clés trouvés
-  const bestMatch = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
-
-  // Si aucun mot-clé n'est trouvé, renvoyer 'other'
-  return bestMatch[1] > 0 ? bestMatch[0] : 'other';
-};
-
-// Fonction pour comptabiliser la vente par langue
-const detectAndCountSale = (commentaire) => {
-  // Détection de la langue par mots-clés
-  const lang = detectLanguageByKeywords(commentaire);
-
-  // Comptabiliser la vente
-  if (salesByLanguage[lang]) {
-    salesByLanguage[lang]++;
-  } else {
-    salesByLanguage['other']++; // Vente internationale ou dans une langue non supportée
-  }
-
-  // Afficher les ventes par langue
-  console.log('Ventes par langue:', salesByLanguage);
-};
-
-// Exemple d'utilisation
-detectAndCountSale("Merci pour la commande, très satisfait!");  // Vente en français
-detectAndCountSale("Thank you for the perfect service!");  // Vente en anglais
-detectAndCountSale("Grazie mille, molto bene!");  // Vente en italien
-detectAndCountSale("Gracias, todo perfecto!");  // Vente en espagnol
-detectAndCountSale("Un produit génial, merci!");  // Vente en français
-detectAndCountSale("Received, thank you!");  // Vente internationale
-
 
 // Fonction utilitaire pour obtenir l'intervalle de dates
 const getDateRange = (dates) => {
