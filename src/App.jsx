@@ -19,26 +19,68 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
 // Nouvelle fonction de détection de langue avec linguist.js
-const detectLanguage = (text) => {
-  try {
-    const result = window.linguist.detect(text);
-    
-    const languageToCountry = {
-      'fr': 'France',
-      'es': 'Espagne',
-      'it': 'Italie',
-      'en': 'International',
-      'nl': 'Pays-Bas',
-      'de': 'Allemagne'
-    };
-
-    const detectedLanguage = result.language;
-    return languageToCountry[detectedLanguage] || 'International';
-  } catch (error) {
-    console.error('Erreur de détection de langue:', error);
-    return 'International';
-  }
+// Mot-clés pour chaque langue
+const patterns = {
+  'fr': ['merci', 'parfait', 'super', 'très', 'reçu', 'conforme'],
+  'es': ['gracias', 'perfecto', 'muy', 'bien', 'genial'],
+  'it': ['grazie', 'perfetto', 'ottimo', 'bene', 'molto'],
+  'en': ['thank', 'perfect', 'good', 'great', 'received'],
+  'de': ['danke', 'perfekt', 'gut', 'sehr', 'super'],
+  'pt': ['obrigado', 'perfeito', 'muito', 'bom', 'ótimo']
 };
+
+// Comptabiliser les ventes par langue
+let salesByLanguage = {
+  fr: 0,
+  es: 0,
+  it: 0,
+  en: 0,
+  de: 0,
+  pt: 0,
+  other: 0, // Pour les ventes non détectées ou internationales
+};
+
+// Fonction pour détecter la langue d'un commentaire
+const detectLanguageByKeywords = (text) => {
+  text = text.toLowerCase();  // Convertir en minuscule pour comparaison
+
+  // Compter les mots-clés trouvés pour chaque langue
+  const scores = {};
+  for (const [lang, keywords] of Object.entries(patterns)) {
+    scores[lang] = keywords.filter(word => text.includes(word)).length;
+  }
+
+  // Retourner la langue avec le plus de mots-clés trouvés
+  const bestMatch = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+
+  // Si aucun mot-clé n'est trouvé, renvoyer 'other'
+  return bestMatch[1] > 0 ? bestMatch[0] : 'other';
+};
+
+// Fonction pour comptabiliser la vente par langue
+const detectAndCountSale = (commentaire) => {
+  // Détection de la langue par mots-clés
+  const lang = detectLanguageByKeywords(commentaire);
+
+  // Comptabiliser la vente
+  if (salesByLanguage[lang]) {
+    salesByLanguage[lang]++;
+  } else {
+    salesByLanguage['other']++; // Vente internationale ou dans une langue non supportée
+  }
+
+  // Afficher les ventes par langue
+  console.log('Ventes par langue:', salesByLanguage);
+};
+
+// Exemple d'utilisation
+detectAndCountSale("Merci pour la commande, très satisfait!");  // Vente en français
+detectAndCountSale("Thank you for the perfect service!");  // Vente en anglais
+detectAndCountSale("Grazie mille, molto bene!");  // Vente en italien
+detectAndCountSale("Gracias, todo perfecto!");  // Vente en espagnol
+detectAndCountSale("Un produit génial, merci!");  // Vente en français
+detectAndCountSale("Received, thank you!");  // Vente internationale
+
 
 // Fonction utilitaire pour obtenir l'intervalle de dates
 const getDateRange = (dates) => {
