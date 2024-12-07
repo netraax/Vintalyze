@@ -259,6 +259,41 @@ const App = () => {
     // Informations générales
     doc.setFontSize(16);
     doc.text('Informations générales', 20, 40);
+
+    {/* Nouvelle section pour les statistiques de vente */}
+{profileData.salesStats && (
+  <div className="bg-gray-50 p-4 rounded-lg">
+    <h3 className="font-bold mb-2">Statistiques des articles</h3>
+    <ul className="space-y-2">
+      <li>
+        <span className="font-medium">Nombre d'articles:</span>{' '}
+        {profileData.salesStats.numberOfArticles} articles
+      </li>
+      <li>
+        <span className="font-medium">Prix moyen:</span>{' '}
+        {profileData.salesStats.averagePrice}€
+      </li>
+      <li>
+        <span className="font-medium">Chiffre d'affaires total:</span>{' '}
+        {profileData.salesStats.totalRevenue}€
+      </li>
+      <li>
+        <span className="font-medium">Gamme de prix:</span>{' '}
+        {profileData.salesStats.priceRange.min}€ - {profileData.salesStats.priceRange.max}€
+      </li>
+      <li>
+        <span className="font-medium">Marques vendues:</span>{' '}
+        <div className="mt-1 flex flex-wrap gap-1">
+          {profileData.salesStats.uniqueBrands.map((brand, index) => (
+            <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+              {brand}
+            </span>
+          ))}
+        </div>
+      </li>
+    </ul>
+  </div>
+)}
     
     const info = [
       ['Boutique', profileData.boutique],
