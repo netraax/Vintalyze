@@ -181,6 +181,7 @@ const App = () => {
           max: Math.max(...prices)
         }
       };
+      
       // Extraction du nom de la boutique
       const boutiquePattern = /Boutique:\s*(\S+)|^([^\s\n]+)\s*À propos/m;
       const boutiqueMatch = text.match(boutiquePattern);
