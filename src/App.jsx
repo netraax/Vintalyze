@@ -325,6 +325,45 @@ const App = () => {
 
       const data = parseVintedProfile(inputText);
       setProfileData(data);
+const prices = [];
+const articles = [];
+const brands = new Set();
+
+// Parcourir les lignes pour trouver les articles et prix
+const lines = text.split('\n');
+for (let i = 0; i < lines.length; i++) {
+  const line = lines[i].trim();
+  // Chercher les prix
+  const priceMatch = line.match(/prix : (\d+,?\d*) €/);
+  if (priceMatch) {
+    const price = parseFloat(priceMatch[1].replace(',', '.'));
+    prices.push(price);
+  }
+
+  // Chercher les types d'articles
+  const articleMatch = line.match(/^([^,]+), prix/);
+  if (articleMatch) {
+    articles.push(articleMatch[1]);
+  }
+
+  // Chercher les marques
+  const brandMatch = line.match(/marque : ([^,]+),/);
+  if (brandMatch) {
+    brands.add(brandMatch[1].trim());
+  }
+}
+
+// Calculer les statistiques
+data.salesStats = {
+  numberOfArticles: articles.length,
+  averagePrice: prices.length > 0 ? (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2) : 0,
+  totalRevenue: prices.reduce((a, b) => a + b, 0).toFixed(2),
+  uniqueBrands: Array.from(brands),
+  priceRange: {
+    min: Math.min(...prices),
+    max: Math.max(...prices)
+  }
+};
       setError('');
     } catch (err) {
       setError(err.message);
