@@ -259,6 +259,23 @@ const App = () => {
     // Informations générales
     doc.setFontSize(16);
     doc.text('Informations générales', 20, 40);
+    
+    const info = [
+      ['Boutique', profileData.boutique],
+      ['Ventes estimées', `${profileData.ventesMinEstimees} - ${profileData.ventesEstimees} (-10%)`],
+      ['Abonnés', profileData.abonnes?.toString() || 'N/A'],
+      ['Abonnements', profileData.abonnements.toString()],
+      ['Lieu', profileData.lieu || 'N/A'],
+      ['Note', `${profileData.note}/5 (${profileData.nombreEvaluations} évaluations)`],
+      ['Taux d\'engagement', `${profileData.engagementRate}%`],
+      ['Score de performance', `${profileData.performanceScore.total}/100`]
+    ];
+    
+    doc.autoTable({
+      startY: 45,
+      head: [['Métrique', 'Valeur']],
+      body: info
+    });
 
     {/* Nouvelle section pour les statistiques de vente */}
 {profileData.salesStats && (
@@ -294,23 +311,6 @@ const App = () => {
     </ul>
   </div>
 )}
-    
-    const info = [
-      ['Boutique', profileData.boutique],
-      ['Ventes estimées', `${profileData.ventesMinEstimees} - ${profileData.ventesEstimees} (-10%)`],
-      ['Abonnés', profileData.abonnes?.toString() || 'N/A'],
-      ['Abonnements', profileData.abonnements.toString()],
-      ['Lieu', profileData.lieu || 'N/A'],
-      ['Note', `${profileData.note}/5 (${profileData.nombreEvaluations} évaluations)`],
-      ['Taux d\'engagement', `${profileData.engagementRate}%`],
-      ['Score de performance', `${profileData.performanceScore.total}/100`]
-    ];
-    
-    doc.autoTable({
-      startY: 45,
-      head: [['Métrique', 'Valeur']],
-      body: info
-    });
 
     // Statistiques de performance
     if (profileData.performanceStats) {
