@@ -142,6 +142,8 @@ const App = () => {
   const parseVintedProfile = (text) => {
     try {
       const data = {};
+      
+      // Dans parseVintedProfile, ajouter :
       const prices = [];
       const articles = [];
       const brands = new Set();
