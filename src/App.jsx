@@ -18,214 +18,6 @@ import {
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-// Au début du fichier, après les imports
-const countryKeywords = {
-  'France': [
-    'merci', 'parfait', 'super', 'très', 'bien', 'reçu', 'conforme', 'colis',
-    'envoi', 'rapide', 'bonne', 'vraiment', 'nickel', 'impeccable', 'génial',
-    'recommande', 'excellent', 'top', 'communication', 'ras'
-  ],
-  'Espagne': [
-    'gracias', 'perfecto', 'muy', 'bien', 'genial', 'todo', 'muchas', 
-    'excelente', 'bueno', 'vendedor', 'envío', 'rápido', 'recomiendo',
-    'recomendable', 'correcto', 'perfecto', 'encantado'
-  ],
-  'Italie': [
-    'grazie', 'perfetto', 'tutto', 'molto', 'bene', 'ottimo', 'bellissimo',
-    'venditore', 'spedizione', 'veloce', 'arrivato', 'consiglio', 'consigliato',
-    'gentile', 'cordiale', 'disponibile', 'pazzesco', 'fantastico', 'preciso'
-  ],
-  'Allemagne': [
-    'danke', 'sehr', 'gut', 'alles', 'freundlich', 'bestens', 'grüße',
-    'zuverlässig', 'deutschland'
-  ],
-  'International': [
-    'thank', 'perfect', 'good', 'great', 'nice', 'very', 'received',
-    'seller', 'shipping', 'thanks', 'fast', 'awesome', 'amazing', 'recommended'
-  ]
-};
-
-const parseVintedProfile = (text) => {
-  try {
-    const data = {};
-    
-    // [Code existant pour l'extraction des données de base]
-
-    // Analyse des ventes par pays
-    const salesByCountry = {
-      'France': 0,
-      'Espagne': 0,
-      'Italie': 0,
-      'Allemagne': 0,
-      'International': 0
-    };
-
-    const lines = text.split('\n');
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (line.includes('il y a') && !line.includes('Vinted')) {
-        const nextLine = lines[i + 1]?.trim() || '';
-        
-        // Ignorer les lignes "Traduire" et les réponses du vendeur
-        if (nextLine && nextLine !== 'Traduire' && !nextLine.startsWith('**') && 
-            !nextLine.startsWith('aimanjackets')) {
-          const text = nextLine.toLowerCase();
-          let maxScore = 0;
-          let detectedCountry = 'International';
-
-          Object.entries(countryKeywords).forEach(([country, keywords]) => {
-            const score = keywords.filter(word => text.includes(word)).length;
-            if (score > maxScore) {
-              maxScore = score;
-              detectedCountry = country;
-            }
-          });
-
-          // N'ajouter que si on a détecté au moins un mot-clé
-          if (maxScore > 0) {
-            salesByCountry[detectedCountry]++;
-            console.log(`Commentaire détecté pour ${detectedCountry}:`, text);
-          }
-        }
-      }
-    }
-
-    // Ajouter les données de répartition géographique
-    data.salesByCountry = Object.entries(salesByCountry)
-      .filter(([_, count]) => count > 0)
-      .map(([country, count]) => ({
-        name: country,
-        value: count,
-        percentage: ((count / data.nombreEvaluations) * 100).toFixed(1)
-      }))
-      .sort((a, b) => b.value - a.value);
-
-    return data;
-  } catch (err) {
-    console.error('Erreur de parsing:', err);
-    throw new Error('Erreur lors de l\'analyse du profil.');
-  }
-};
-
-// Nouvelle fonction de détection de langue avec linguist.js
-const analyzeCommentsByCountry = (comments) => {
-  // Initialiser les compteurs par pays
-  const salesByCountry = {
-    'France': 0,
-    'Espagne': 0,
-    'Italie': 0,
-    'International': 0
-  };
-
-  // Mots-clés par pays
- const countryKeywords = {
-  'France': [
-    // Remerciements et politesse
-    'merci', 'svp', 'bonjour', 'bonsoir', 'au top', 'nickel', 
-    // Qualités positives
-    'parfait', 'super', 'très', 'bien', 'génial', 'excellent', 'impeccable', 'formidable',
-    // Transaction et livraison
-    'reçu', 'conforme', 'colis', 'envoi', 'rapide', 'livraison', 'emballage', 'commande',
-    // Satisfaction
-    'content', 'satisfait', 'ravie', 'recommande', 'qualité', 'communication',
-    // Adjectifs courants
-    'beau', 'belle', 'bon', 'bonne', 'agréable', 'magnifique', 'sympa',
-    // Expressions
-    'correspond', 'comme prévu', 'encore merci', 'à bientôt'
-  ],
-  
-  'Espagne': [
-    // Remerciements et politesse
-    'gracias', 'por favor', 'hola', 'buenos', 'encantada',
-    // Qualités positives
-    'perfecto', 'muy', 'bien', 'genial', 'excelente', 'bueno', 'buena', 'estupendo',
-    // Transaction et livraison
-    'vendedor', 'envío', 'paquete', 'recibido', 'rápido', 'llegó', 'entrega',
-    // Satisfaction
-    'contenta', 'satisfecha', 'recomiendo', 'calidad', 'comunicación',
-    // Adjectifs courants
-    'bonito', 'bonita', 'hermoso', 'hermosa', 'precioso', 'preciosa', 'magnífico',
-    // Expressions
-    'todo correcto', 'como esperaba', 'muchas gracias', 'hasta pronto'
-  ],
-
-  'Italie': [
-    // Remerciements et politesse
-    'grazie', 'prego', 'ciao', 'salve', 'gentile',
-    // Qualités positives
-    'perfetto', 'ottimo', 'bene', 'molto', 'bellissimo', 'eccellente', 'fantastico',
-    // Transaction et livraison
-    'venditore', 'spedizione', 'pacco', 'ricevuto', 'veloce', 'consegna', 'arrivato',
-    // Satisfaction
-    'contento', 'contenta', 'soddisfatto', 'soddisfatta', 'consiglio', 'qualità',
-    // Adjectifs courants
-    'bello', 'bella', 'buono', 'buona', 'magnifico', 'stupendo', 'eccezionale',
-    // Expressions
-    'come previsto', 'tutto perfetto', 'mille grazie', 'alla prossima'
-  ],
-
-  'International': [
-    // Remerciements et politesse
-    'thank', 'thanks', 'please', 'hello', 'hi', 'hey',
-    // Qualités positives
-    'perfect', 'good', 'great', 'excellent', 'awesome', 'amazing', 'wonderful',
-    // Transaction et livraison
-    'received', 'shipping', 'delivery', 'package', 'fast', 'quick', 'seller',
-    // Satisfaction
-    'satisfied', 'happy', 'recommend', 'quality', 'communication',
-    // Adjectifs courants
-    'nice', 'beautiful', 'lovely', 'fantastic', 'smooth', 'pleasant',
-    // Expressions
-    'as described', 'well packed', 'many thanks', 'will buy again'
-  ]
-};
-
-  comments.forEach(comment => {
-    const text = comment.toLowerCase();
-    let detected = 'International';
-    let maxScore = 0;
-
-    // Détecter le pays avec le plus de mots-clés correspondants
-    Object.entries(countryKeywords).forEach(([country, keywords]) => {
-      const score = keywords.filter(word => text.includes(word)).length;
-      if (score > maxScore) {
-        maxScore = score;
-        detected = country;
-      }
-    });
-
-    // Incrémenter le compteur pour ce pays
-    salesByCountry[detected]++;
-  });
-
-  return salesByCountry;
-};
-
-// Fonction utilitaire pour obtenir l'intervalle de dates
-const getDateRange = (dates) => {
-  if (dates.length === 0) return { start: new Date(), end: new Date() };
-  const sortedDates = dates.sort((a, b) => new Date(a) - new Date(b));
-  return {
-    start: new Date(sortedDates[0]),
-    end: new Date(sortedDates[sortedDates.length - 1])
-  };
-};
-
-// Fonction pour générer la période adaptative
-const generateDatePeriod = (startDate, endDate) => {
-  const dates = {};
-  const current = new Date(startDate);
-  const end = new Date(endDate);
-
-  while (current <= end) {
-    const monthKey = current.toISOString().slice(0, 7);
-    dates[monthKey] = 0;
-    current.setMonth(current.getMonth() + 1);
-  }
-
-  return dates;
-};
 const App = () => {
   const [inputText, setInputText] = useState('');
   const [profileData, setProfileData] = useState(null);
@@ -310,6 +102,7 @@ const App = () => {
       prediction: prediction
     };
   };
+
   const convertRelativeDateToAbsolute = (relativeDate) => {
     const now = new Date();
     const parts = relativeDate.toLowerCase().match(/(\d+)\s+(minute|heure|jour|semaine|mois|an|années|ans)/);
@@ -346,7 +139,6 @@ const App = () => {
     
     return date;
   };
-
   const parseVintedProfile = (text) => {
     try {
       const data = {};
@@ -390,12 +182,18 @@ const App = () => {
         data.ventesMinEstimees = Math.floor(data.nombreEvaluations * 0.9);
       }
 
-      // Analyse temporelle adaptative des ventes
-      const commentDates = [];
-      const lines = text.split('\n');
+      // Analyse temporelle des ventes
       const salesByMonth = {};
+      const timePeriod = 12;
       
-      // Collecte des dates
+      for (let i = 0; i < timePeriod; i++) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthKey = date.toISOString().slice(0, 7);
+        salesByMonth[monthKey] = 0;
+      }
+
+      const lines = text.split('\n');
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (line.includes('il y a')) {
@@ -403,70 +201,15 @@ const App = () => {
           if (timeMatch && !line.includes('Vinted')) {
             const absoluteDate = convertRelativeDateToAbsolute(timeMatch[1]);
             if (absoluteDate) {
-              commentDates.push(absoluteDate);
+              const monthKey = absoluteDate.toISOString().slice(0, 7);
+              if (salesByMonth.hasOwnProperty(monthKey)) {
+                salesByMonth[monthKey]++;
+              }
             }
           }
         }
       }
 
-      // Définir la période basée sur les dates trouvées
-      if (commentDates.length > 0) {
-        const { start, end } = getDateRange(commentDates);
-        Object.assign(salesByMonth, generateDatePeriod(start, end));
-
-        // Compter les ventes par mois
-        commentDates.forEach(date => {
-          const monthKey = date.toISOString().slice(0, 7);
-          if (salesByMonth.hasOwnProperty(monthKey)) {
-            salesByMonth[monthKey]++;
-          }
-        });
-      }
-      
-// Analyse des ventes par pays
-      const salesByCountry = {
-        'France': 0,
-        'Espagne': 0,
-        'Italie': 0,
-        'International': 0
-      };
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        const nextLine = lines[i + 1]?.trim() || '';
-        
-        if (line.includes('il y a') && !line.includes('Vinted')) {
-          if (nextLine && !nextLine.startsWith('**')) {
-            // Détecter la langue du commentaire
-            const text = nextLine.toLowerCase();
-            let maxScore = 0;
-            let detectedCountry = 'International';
-
-            Object.entries(countryKeywords).forEach(([country, keywords]) => {
-              const score = keywords.filter(word => text.includes(word)).length;
-              if (score > maxScore) {
-                maxScore = score;
-                detectedCountry = country;
-              }
-            });
-
-            // Incrémenter le compteur pour ce pays
-            salesByCountry[detectedCountry]++;
-          }
-        }
-      }
-
-      // Ajouter les données de répartition géographique
-      data.salesByCountry = Object.entries(salesByCountry)
-        .filter(([_, count]) => count > 0)
-        .map(([country, count]) => ({
-          name: country,
-          value: count,
-          percentage: ((count / data.nombreEvaluations) * 100).toFixed(1)
-        }))
-        .sort((a, b) => b.value - a.value);
-      
-      // Convertir en format pour le graphique
       data.salesTimeline = Object.entries(salesByMonth)
         .map(([date, count]) => ({
           date: date,
@@ -475,9 +218,13 @@ const App = () => {
         }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-      // Analyses supplémentaires
+      // Calcul du taux d'engagement
       data.engagementRate = data.abonnes ? (data.ventesEstimees / data.abonnes * 100).toFixed(1) : 0;
+      
+      // Calcul du score de performance
       data.performanceScore = calculatePerformanceScore(data);
+      
+      // Calcul des statistiques de performance
       data.performanceStats = calculatePerformanceStats(data);
 
       if (!data.boutique) {
@@ -490,6 +237,7 @@ const App = () => {
       throw new Error('Erreur lors de l\'analyse du profil. Assurez-vous d\'avoir copié tout le contenu de la page du profil Vinted.');
     }
   };
+
   const handleReset = () => {
     setInputText('');
     setProfileData(null);
@@ -528,22 +276,6 @@ const App = () => {
       head: [['Métrique', 'Valeur']],
       body: info
     });
-    
-    {profileData.salesByCountry && profileData.salesByCountry.length > 0 && (
-  <div className="bg-gray-50 p-4 rounded-lg">
-    <h3 className="font-bold mb-2">Répartition géographique des ventes</h3>
-    <div className="space-y-2">
-      {profileData.salesByCountry.map((item, index) => (
-        <div key={index} className="flex justify-between items-center">
-          <span>{item.name}</span>
-          <span className="font-medium">
-            {item.value} ventes ({item.percentage}%)
-          </span>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
 
     // Statistiques de performance
     if (profileData.performanceStats) {
@@ -576,7 +308,7 @@ const App = () => {
       
       doc.autoTable({
         startY: doc.lastAutoTable.finalY + 25,
-        head: [['Période', 'Nombre de ventes']],
+        head: [['Période', 'Ventes']],
         body: salesData
       });
     }
@@ -593,55 +325,6 @@ const App = () => {
 
       const data = parseVintedProfile(inputText);
       setProfileData(data);
-      const parseVintedProfile = (text) => {
-  try {
-    const data = {};
-    
-    // AJOUTER ICI LE NOUVEAU CODE 👇
-    const prices = [];
-    const articles = [];
-    const brands = new Set();
-
-    // Parcourir les lignes pour trouver les articles et prix
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      // Chercher les prix
-      const priceMatch = line.match(/prix : (\d+,?\d*) €/);
-      if (priceMatch) {
-        const price = parseFloat(priceMatch[1].replace(',', '.'));
-        prices.push(price);
-      }
-
-      // Chercher les types d'articles
-      const articleMatch = line.match(/^([^,]+), prix/);
-      if (articleMatch) {
-        articles.push(articleMatch[1]);
-      }
-
-      // Chercher les marques
-      const brandMatch = line.match(/marque : ([^,]+),/);
-      if (brandMatch) {
-        brands.add(brandMatch[1].trim());
-      }
-    }
-
-    // Calculer les statistiques
-    data.salesStats = {
-      numberOfArticles: articles.length,
-      averagePrice: prices.length > 0 ? (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2) : 0,
-      totalRevenue: prices.reduce((a, b) => a + b, 0).toFixed(2),
-      uniqueBrands: Array.from(brands),
-      priceRange: {
-        min: Math.min(...prices),
-        max: Math.max(...prices)
-      }
-    };
-
-    // CONTINUER AVEC LE CODE EXISTANT
-    // Extraction du nom de la boutique
-    const boutiquePattern = /Boutique:\s*(\S+)|^([^\s\n]+)\s*À propos/m;
-    // ... reste du code existant
       setError('');
     } catch (err) {
       setError(err.message);
@@ -669,26 +352,6 @@ const App = () => {
   // JSX pour le rendu de la comparaison
   const renderComparison = () => {
     if (!profileData || !secondProfileData) return null;
-
-    // Créer une plage de dates communes pour les deux profils
-    const allDates = [
-      ...profileData.salesTimeline.map(item => item.date),
-      ...secondProfileData.salesTimeline.map(item => item.date)
-    ];
-    const { start, end } = getDateRange(allDates);
-    const commonPeriod = generateDatePeriod(start, end);
-
-    // Remplir les données pour chaque profil
-    const mergedData = Object.keys(commonPeriod).map(monthKey => {
-      const firstProfileSale = profileData.salesTimeline.find(item => item.date === monthKey)?.ventes || 0;
-      const secondProfileSale = secondProfileData.salesTimeline.find(item => item.date === monthKey)?.ventes || 0;
-      return {
-        date: monthKey,
-        mois: new Date(monthKey).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }),
-        [profileData.boutique]: firstProfileSale,
-        [secondProfileData.boutique]: secondProfileSale
-      };
-    });
 
     return (
       <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
@@ -721,7 +384,6 @@ const App = () => {
           <LineChart
             width={800}
             height={300}
-            data={mergedData}
             margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
           >
             <CartesianGrid strokeDasharray="3 3" />
@@ -736,14 +398,18 @@ const App = () => {
             <Legend />
             <Line 
               type="monotone" 
-              dataKey={profileData.boutique}
+              data={profileData.salesTimeline}
+              dataKey="ventes" 
               stroke="#3B82F6" 
+              name={profileData.boutique}
               strokeWidth={2}
             />
             <Line 
               type="monotone" 
-              dataKey={secondProfileData.boutique}
+              data={secondProfileData.salesTimeline}
+              dataKey="ventes" 
               stroke="#10B981" 
+              name={secondProfileData.boutique}
               strokeWidth={2}
             />
           </LineChart>
@@ -765,15 +431,15 @@ const App = () => {
         </div>
 
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-      <div className="mb-4 text-sm text-gray-600">
-        <p>Comment utiliser Vintalyze :</p>
-        <ol className="list-decimal pl-5 mt-2 space-y-1">
-          <li>Allez sur le profil Vinted que vous souhaitez analyser</li>
-          <li>Sélectionnez tout le contenu de la page (Ctrl+A)</li>
-          <li>Copiez le contenu (Ctrl+C)</li>
-          <li>Collez-le ci-dessous (Ctrl+V)</li>
-        </ol>
-      </div>
+          <div className="mb-4 text-sm text-gray-600">
+            <p>Comment utiliser Vintalyze :</p>
+            <ol className="list-decimal pl-5 mt-2 space-y-1">
+              <li>Allez sur le profil Vinted que vous souhaitez analyser</li>
+              <li>Sélectionnez tout le contenu de la page (Ctrl+A)</li>
+              <li>Copiez le contenu (Ctrl+C)</li>
+              <li>Collez-le ci-dessous (Ctrl+V)</li>
+            </ol>
+          </div>
           
           <textarea
             className="w-full h-48 p-4 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
