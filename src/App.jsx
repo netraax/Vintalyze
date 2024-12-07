@@ -277,7 +277,6 @@ const App = () => {
       body: info
     });
 
-    {/* Nouvelle section pour les statistiques de vente */}
 {profileData.salesStats && (
   <div className="bg-gray-50 p-4 rounded-lg">
     <h3 className="font-bold mb-2">Statistiques des articles</h3>
